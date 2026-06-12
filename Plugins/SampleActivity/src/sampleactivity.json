@@ -1,0 +1,5 @@
+﻿{
+  "name": "SampleActivityPlugin",
+  "version": "0.1.0",
+  "description": "Minimal activity plugin for MVP workflow."
+}
