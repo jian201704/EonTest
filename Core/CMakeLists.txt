@@ -1,4 +1,5 @@
 ﻿add_library(eon-core STATIC
+    include/eon/core/EventBus.h
     src/EventBus.cpp
 )
 
