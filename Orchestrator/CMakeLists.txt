@@ -4,8 +4,6 @@
 
 target_link_libraries(eon-orchestrator
     PRIVATE
-        eon-core
-        eon-runtime
         Qt6::Core
 )
 

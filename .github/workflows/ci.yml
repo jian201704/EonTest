@@ -24,5 +24,8 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
+      - name: Run CTest
+        run: ctest --test-dir build --output-on-failure --build-config Release
+
       - name: Run MVP
-        run: ./build/bin/eon-orchestrator ./build/plugins
+        run: ./build/bin/eon-orchestrator ./build/Plugins ./Workflows/minimal.workflow.json

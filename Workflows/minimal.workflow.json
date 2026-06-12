@@ -1,0 +1,18 @@
+{
+  "workflowId": "mvp-workflow-from-json",
+  "priority": 20,
+  "resourceLocks": ["station.free"],
+  "entryStepId": "step.sample",
+  "steps": [
+    {
+      "stepId": "step.sample",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "onSuccessStepId": "",
+      "onFailureStepId": ""
+    }
+  ]
+}

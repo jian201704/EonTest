@@ -1,0 +1,8 @@
+{
+  "pluginId": "sample.reporter",
+  "name": "SampleReporterPlugin",
+  "version": "0.1.0",
+  "contractType": "reporter",
+  "contractVersion": "1.0",
+  "description": "Sample reporter plugin for post-processing stage."
+}

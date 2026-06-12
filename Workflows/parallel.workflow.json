@@ -1,0 +1,47 @@
+{
+  "workflowId": "parallel-workflow",
+  "priority": 10,
+  "resourceLocks": ["station.shared"],
+  "entryStepId": "step.parallel.a",
+  "initialData": {
+    "forceFailStepId": ""
+  },
+  "steps": [
+    {
+      "stepId": "step.parallel.a",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "group.main",
+      "compensationStepId": "",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "fail_fast",
+      "onSuccessStepId": "step.final",
+      "onFailureStepId": "",
+      "onSkippedStepId": ""
+    },
+    {
+      "stepId": "step.parallel.b",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "group.main",
+      "compensationStepId": "",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "continue_on_error",
+      "onSuccessStepId": "step.final",
+      "onFailureStepId": "",
+      "onSkippedStepId": ""
+    },
+    {
+      "stepId": "step.final",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "fail_fast",
+      "onSuccessStepId": "",
+      "onFailureStepId": "",
+      "onSkippedStepId": ""
+    }
+  ]
+}

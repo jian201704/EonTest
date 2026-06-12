@@ -1,0 +1,36 @@
+{
+  "workflowId": "recovery-workflow",
+  "priority": 30,
+  "entryStepId": "step.may_fail",
+  "initialData": {
+    "forceFail": true
+  },
+  "steps": [
+    {
+      "stepId": "step.may_fail",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "continue_on_error",
+      "onSuccessStepId": "step.recover",
+      "onFailureStepId": "",
+      "onSkippedStepId": ""
+    },
+    {
+      "stepId": "step.recover",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "",
+      "conditionKey": "forceFail",
+      "conditionEquals": "false",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "continue_on_error",
+      "onSuccessStepId": "",
+      "onFailureStepId": "",
+      "onSkippedStepId": ""
+    }
+  ]
+}

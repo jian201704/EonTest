@@ -1,0 +1,78 @@
+具体落地我建议这套（兼顾你说的易用/美观/维护/扩展/CELL/性能）：
+
+产品形态：Studio + Runtime + Orchestrator 三件套
+
+Studio（配置/编辑/可视化）
+Runtime（单CELL高速执行）
+Orchestrator（多CELL调度与监控）
+代码架构：Clean Architecture + DDD-lite
+
+Domain（测试模型、步骤、状态机）
+Application（用例编排）
+Infrastructure（驱动、数据库、消息总线）
+Presentation（UI/API）
+扩展机制：强约束插件系统（版本化契约）
+
+Driver 插件（硬件）
+Step 插件（测试步骤）
+Analyzer 插件（算法/判定）
+Reporter 插件（MES/SPC/报表）
+测试序列：DSL + 图形化流程编辑器
+
+节点化（并行、重试、分支、超时、回滚）
+参数模板化 + 配方版本化 + 一键回放
+多CELL扩展：控制面/数据面分离
+
+控制面：调度、资源锁、配方下发
+数据面：CELL本地执行与缓存，上报异步化
+性能与稳定：
+
+执行器多进程隔离（单步骤崩溃不拖垮全局）
+异步IO、批量写库、热路径无锁/低锁
+全链路可观测（日志/指标/追踪）
+推荐技术栈（偏工业可维护）：
+
+后端：.NET 8 (C#) 或 C++20（驱动层）混合
+UI：Avalonia/WPF（桌面）
+工作流：自研轻量引擎或基于状态机库
+消息：NATS / MQTT（多CELL）
+存储：PostgreSQL + Timeseries（可选）
+这套是我认为你这个目标下“综合得分最高”的架构：长期可演进、插件可控、CELL可横向扩展、维护成本可控。
+
+Qt 现在主线是 Qt 6.x（工程上已全面 CMake 化，UI 主推 Qt Quick/QML）。
+
+你可以重点关注这些“新一代能力”：
+
+Qt Quick + QML：现代声明式 UI、动画流畅、跨平台一致性好。
+RHI 渲染后端：同一套渲染抽象适配 D3D/Vulkan/Metal/OpenGL。
+Qt Quick 3D / 多媒体栈升级：复杂可视化和多媒体能力更强。
+QML 与 C++ 深度协作：界面和业务/驱动分层更清晰，维护性更好。
+工具链现代化：CMake、包管理、CI/CD 集成更顺手。
+我说它是你场景“最优解”的理由（不是绝对最优）：
+
+你要的“跨平台 + 工业硬件 + 长期维护”这三件事，Qt 在同一技术栈里同时做得最均衡。
+UI、串口/网络、线程、插件、部署都在一个成熟生态里，团队认知成本更低。
+ATE 这类桌面重交互+设备控制场景，Qt 的稳定性和工程可控性通常优于纯 Web 方案。
+
+最佳解是：领域分层 + 插件化 + 工作流引擎 + 事件驱动 + 多进程执行 的混合架构。
+
+可以，Web 完全可以连接 Qt 平台。常见做法是：
+
+Qt/C++ 作为本地执行引擎（驱动、测试序列、数据采集）。
+对外提供 gRPC/REST/WebSocket。
+Web 前端（React/Vue）做远程监控、配置、报表和多 CELL 调度。
+硬件接口方面，Qt 本身不直接“包办所有总线”，但可通过驱动层很好接入：
+
+USB：libusb / WinUSB / 厂商 SDK
+CAN/CAN FD：SocketCAN（Linux）或 Vector/PEAK/Kvaser SDK
+SPI / I2C：通常经 USB 转接器或控制板 SDK（PC 侧很少直连）
+串口/网口：Qt 原生很成熟（QSerialPort、QTcpSocket）
+新能源汽车场景建议优先支持：CAN/CAN FD + UDS、DoIP、LIN（如需），再把具体设备适配封装成插件。
+核心原则是做两层：总线驱动层（适配器）+ 协议层（UDS/XCP/自定义），这样后续换硬件或扩多车型成本最低。
+
+仓库: https://github.com/jian201704/EonTest
+目标: 用最新稳定 Qt 架构实现 领域分层 + 插件化 + 工作流引擎 + 事件驱动 + 多进程执行。
+请直接执行：
+1) 初始化项目骨架（Core/Runtime/Studio/Orchestrator/SDK）
+2) 建立 CMake + CI + 版本规范（SemVer）
+3) 提交首个可运行 MVP（最小流程执行 + 插件加载 + 事件总线）

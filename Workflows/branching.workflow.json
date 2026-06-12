@@ -1,0 +1,51 @@
+{
+  "workflowId": "branching-workflow",
+  "priority": 50,
+  "resourceLocks": ["station.shared"],
+  "entryStepId": "step.prepare",
+  "initialData": {
+    "forceFail": false
+  },
+  "steps": [
+    {
+      "stepId": "step.prepare",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "",
+      "maxRetries": 1,
+      "timeoutMs": 0,
+      "failurePolicy": "fail_fast",
+      "onSuccessStepId": "step.verify",
+      "onFailureStepId": "step.failure",
+      "onSkippedStepId": ""
+    },
+    {
+      "stepId": "step.verify",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "",
+      "conditionKey": "qualityGate",
+      "conditionEquals": "pass",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "continue_on_error",
+      "onSuccessStepId": "",
+      "onFailureStepId": "",
+      "onSkippedStepId": "step.failure"
+    },
+    {
+      "stepId": "step.failure",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "",
+      "conditionKey": "never",
+      "conditionEquals": "hit",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "continue_on_error",
+      "onSuccessStepId": "",
+      "onFailureStepId": "",
+      "onSkippedStepId": ""
+    }
+  ]
+}

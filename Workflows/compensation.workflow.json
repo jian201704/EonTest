@@ -1,0 +1,46 @@
+{
+  "workflowId": "compensation-workflow",
+  "priority": 40,
+  "entryStepId": "step.work",
+  "initialData": {
+    "forceFailStepId": "step.fail"
+  },
+  "steps": [
+    {
+      "stepId": "step.work",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "step.compensate",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "fail_fast",
+      "onSuccessStepId": "step.fail",
+      "onFailureStepId": "",
+      "onSkippedStepId": ""
+    },
+    {
+      "stepId": "step.fail",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "fail_fast",
+      "onSuccessStepId": "",
+      "onFailureStepId": "",
+      "onSkippedStepId": ""
+    },
+    {
+      "stepId": "step.compensate",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "compensationStepId": "",
+      "maxRetries": 0,
+      "timeoutMs": 0,
+      "failurePolicy": "continue_on_error",
+      "onSuccessStepId": "",
+      "onFailureStepId": "",
+      "onSkippedStepId": ""
+    }
+  ]
+}

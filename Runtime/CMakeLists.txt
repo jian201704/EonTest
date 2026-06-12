@@ -10,6 +10,7 @@ target_include_directories(eon-runtime
 target_link_libraries(eon-runtime
     PUBLIC
         eon-core
+        eon-domain
         eon-sdk
         Qt6::Core
 )

@@ -1,5 +1,8 @@
 ﻿{
+  "pluginId": "sample.activity",
   "name": "SampleActivityPlugin",
   "version": "0.1.0",
-  "description": "Minimal activity plugin for MVP workflow."
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "Minimal step plugin for MVP workflow."
 }

@@ -1,0 +1,8 @@
+{
+  "pluginId": "sample.analyzer",
+  "name": "SampleAnalyzerPlugin",
+  "version": "0.1.0",
+  "contractType": "analyzer",
+  "contractVersion": "1.0",
+  "description": "Sample analyzer plugin that extracts workflow context values."
+}
