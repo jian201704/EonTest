@@ -1,0 +1,8 @@
+{
+  "pluginId": "modbus.master",
+  "name": "ModbusMasterPlugin",
+  "version": "0.1.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "Modbus Master — 支持 Serial RTU 和 TCP/IP 两种传输层。功能码: 01~06, 15, 16。虚拟模式调试。"
+}

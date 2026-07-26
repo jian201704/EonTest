@@ -7,3 +7,25 @@
 *.pdb
 *.ilk
 *.log
+
+# Build and packaging outputs
+_CPack_Packages/
+CMakeFiles/
+cmake-build-*/
+
+# Runtime state and generated reports
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+reports/
+studio-state.json
+studio-state.db
+
+# Python cache and local tooling files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generated local diagnostics
+xlsx_dump.txt

@@ -1,0 +1,8 @@
+{
+  "pluginId": "voltage.analyzer",
+  "name": "VoltageAnalyzerPlugin",
+  "version": "0.1.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "Voltage pass/fail analyzer. Compares measured value against min/max limits and generates judgment result."
+}

@@ -1,5 +1,6 @@
 ﻿add_library(sample-activity-plugin MODULE
     src/SampleActivityPlugin.cpp
+    src/sampleactivity.json
 )
 
 target_link_libraries(sample-activity-plugin

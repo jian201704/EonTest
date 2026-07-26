@@ -1,0 +1,91 @@
+{
+  "workflowId": "Modbus_TCP_Test",
+  "priority": 10,
+  "resourceLocks": ["modbus.simulator"],
+  "entryStepId": "step.read_holding_0",
+  "initialData": {
+    "virtualMode": false,
+    "dutId": "MODBUS-SIM-001",
+    "transport": "tcp",
+    "host": "127.0.0.1",
+    "port": 502,
+    "slaveId": 1,
+    "timeoutMs": 3000
+  },
+  "steps": [
+    {
+      "stepId": "step.read_holding_0",
+      "pluginId": "modbus.master",
+      "maxRetries": 1,
+      "timeoutMs": 5000,
+      "onSuccessStepId": "step.read_holding_1",
+      "initialData": {
+        "action": "read",
+        "functionCode": 3,
+        "startAddr": 0,
+        "quantity": 4,
+        "unit": "counts",
+        "description": "Read Holding Registers 0x0000-0x0003"
+      }
+    },
+    {
+      "stepId": "step.read_holding_1",
+      "pluginId": "modbus.master",
+      "maxRetries": 0,
+      "timeoutMs": 5000,
+      "onSuccessStepId": "step.read_holding_2",
+      "initialData": {
+        "action": "read",
+        "functionCode": 3,
+        "startAddr": 4,
+        "quantity": 4,
+        "unit": "counts",
+        "description": "Read Holding Registers 0x0004-0x0007"
+      }
+    },
+    {
+      "stepId": "step.read_holding_2",
+      "pluginId": "modbus.master",
+      "maxRetries": 0,
+      "timeoutMs": 5000,
+      "onSuccessStepId": "step.write_single",
+      "initialData": {
+        "action": "read",
+        "functionCode": 3,
+        "startAddr": 8,
+        "quantity": 2,
+        "unit": "counts",
+        "description": "Read Holding Registers 0x0008-0x0009"
+      }
+    },
+    {
+      "stepId": "step.write_single",
+      "pluginId": "modbus.master",
+      "maxRetries": 1,
+      "timeoutMs": 5000,
+      "onSuccessStepId": "step.verify_write",
+      "initialData": {
+        "action": "write",
+        "functionCode": 6,
+        "startAddr": 10,
+        "value": 12345,
+        "description": "Write 12345 to Holding Register 0x000A"
+      }
+    },
+    {
+      "stepId": "step.verify_write",
+      "pluginId": "modbus.master",
+      "maxRetries": 0,
+      "timeoutMs": 5000,
+      "onSuccessStepId": "",
+      "initialData": {
+        "action": "read",
+        "functionCode": 3,
+        "startAddr": 10,
+        "quantity": 1,
+        "unit": "counts",
+        "description": "Verify written value at 0x000A"
+      }
+    }
+  ]
+}

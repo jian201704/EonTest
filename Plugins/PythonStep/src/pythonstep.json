@@ -1,0 +1,8 @@
+{
+  "pluginId": "python.script",
+  "name": "PythonScriptPlugin",
+  "version": "0.1.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "执行 Python 脚本作为测试步骤。脚本通过 stdin/stdout JSON IPC 与框架通信。支持 virtualMode。"
+}

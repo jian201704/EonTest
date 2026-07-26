@@ -1,0 +1,27 @@
+{
+  "workflowId": "Modbus_TCP_Direct_Test",
+  "priority": 10,
+  "entryStepId": "step.read_hr",
+  "initialData": {
+    "transport": "tcp",
+    "host": "127.0.0.1",
+    "port": 1502,
+    "slaveId": 1,
+    "timeoutMs": 5000
+  },
+  "steps": [
+    {
+      "stepId": "step.read_hr",
+      "pluginId": "modbus.master",
+      "maxRetries": 0,
+      "timeoutMs": 10000,
+      "onSuccessStepId": "",
+      "initialData": {
+        "func": 3,
+        "addr": 0,
+        "count": 4,
+        "unit": "counts"
+      }
+    }
+  ]
+}

@@ -1,11 +1,14 @@
-﻿add_library(eon-sdk INTERFACE)
+﻿add_library(eon-sdk STATIC
+    src/Dut.cpp
+    src/ArtifactPipeline.cpp
+)
 
 target_include_directories(eon-sdk
-    INTERFACE
+    PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(eon-sdk
-    INTERFACE
+    PUBLIC
         Qt6::Core
 )

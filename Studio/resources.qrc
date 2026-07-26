@@ -1,0 +1,21 @@
+<RCC>
+    <qresource prefix="/eon/studio/qml">
+        <file alias="MainWindow.qml">qml/MainWindow.qml</file>
+        <file alias="components/DashboardCard.qml">qml/components/DashboardCard.qml</file>
+        <file alias="components/HeaderCell.qml">qml/components/HeaderCell.qml</file>
+        <file alias="components/DataCell.qml">qml/components/DataCell.qml</file>
+        <file alias="components/StatusBadge.qml">qml/components/StatusBadge.qml</file>
+        <file alias="components/WorkflowCanvasView.qml">qml/components/WorkflowCanvasView.qml</file>
+        <file alias="components/StepPropertyPanel.qml">qml/components/StepPropertyPanel.qml</file>
+        <file alias="components/CellTaskPanel.qml">qml/components/CellTaskPanel.qml</file>
+        <file alias="components/CellDashboardPanel.qml">qml/components/CellDashboardPanel.qml</file>
+        <file alias="components/CellPanel.qml">qml/components/CellPanel.qml</file>
+        <file alias="components/MenuBarButton.qml">qml/components/MenuBarButton.qml</file>
+        <file alias="components/MenuRow.qml">qml/components/MenuRow.qml</file>
+        <file alias="components/MenuSep.qml">qml/components/MenuSep.qml</file>
+        <file alias="components/ResourceConflictView.qml">qml/components/ResourceConflictView.qml</file>
+        <file alias="pages/WorkflowCanvasPage.qml">qml/pages/WorkflowCanvasPage.qml</file>
+        <file alias="pages/DashboardPage.qml">qml/pages/DashboardPage.qml</file>
+        <file alias="pages/BenchSettingsPage.qml">qml/pages/BenchSettingsPage.qml</file>
+    </qresource>
+</RCC>

@@ -1,0 +1,8 @@
+{
+    "pluginId": "eon.reporter.csv",
+    "name": "CsvReporterPlugin",
+    "version": "0.1.0",
+    "contractType": "reporter",
+    "contractVersion": "1.0",
+    "description": "CSV reporter plugin for workflow results."
+}

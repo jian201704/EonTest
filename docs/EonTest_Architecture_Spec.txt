@@ -1,0 +1,210 @@
+﻿# EonTest 测试框架架构设计规范
+
+**版本**: V1.1 | **作者**: 架构评审 | **日期**: 2026-06-16 | **合规**: IATF 16949
+
+---
+
+## 1. 两份设计的对比分析
+
+### 1.1 豆包设计 (QT+Python.docx)
+
+| 维度 | 评价 |
+|------|------|
+| 五层架构 | 规范，行业对标 NI TestStand / Vector CANoe |
+| Excel 三 Sheet | 是量产测试的事实标准（工步表、设备映射、追溯信息） |
+| QT 唯一主控 | 合理，核心流程稳定性必须 C++ 保障 |
+| Python 进程隔离 | QProcess 独立进程，崩溃不牵连主程序 |
+| 设备抽象层 | 工厂+多态，但写死了 Qt 原生驱动（VISA/串口） |
+| **不足** | 无 workflow 分支/跳转/重试/条件逻辑；无 Python 作为完整仪器后端；QML 被否定但我们的 Studio 已是 QML |
+
+### 1.2 TestCase_Sample.xlsx（3 Sheet）
+
+**Sheet 1 - 测试工步表（8条样例）：**
+一行=一个测试动作，包含设备名、通道号、动作指令、配置参数1/2/3、下限/上限/单位、超时、失败处理。支持多台同型设备（电源_主/电源_辅）。
+
+**Sheet 2 - 设备资源映射表：**
+设备名→连接方式/地址/型号/校准有效期/通道固有参数。实现工步与硬件解耦。
+
+**Sheet 3 - 产品追溯信息表：**
+产品型号、用例版本、测试节拍、编制/批准、IATF 16949 签字。
+
+### 1.3 当前实现状态 (V1.1)
+
+| 维度 | 现状 |
+|------|------|
+| 流程引擎 | WorkflowEngine 已支持 step 跳转/重试/条件/补偿 |
+| 插件系统 | IStepPlugin / IAnalyzerPlugin / IReporterPlugin 三层 |
+| 多仪器 | 当前无隔离，power.voltage 互相覆盖 |
+| Python | 无集成 |
+| 用例入口 | **原生 Excel 三 Sheet**（.xlsx 直接加载，无 JSON 中转） |
+| Studio | QML 界面，Dashboard / CELL / Log / 图形编辑器已工作 |
+| Studio 编辑器 | New / Add Step / Open (.xlsx) / Save 功能正常 |
+| XlsxParser | Infrastructure 层内置，PowerShell Expand-Archive + Qt XML 解析 |
+
+---
+
+## 2. 最终架构设计（五层 + 原生 Excel）
+
+```
+                   ┌──────────────────────┐
+                   │   Excel 三 Sheet     │  ← 工艺工程师编辑，原生格式
+                   │  (TestCase.xlsx)     │     引擎直接读取，无中间格式
+                   └──────────┬───────────┘
+                              │ XlsxParser (PowerShell解ZIP + Qt XML解析)
+                              ▼
+    ┌─────────────────────────────────────────────────────────┐
+    │                    WorkflowDefinition                   │
+    │  (C++ 内存结构: stepId / pluginId / policy / params)    │
+    └────┬────────────────────┬───────────────────┬───────────┘
+         │                    │                   │
+    ┌────▼───────┐   ┌───────▼─────────┐   ┌─────▼──────────┐
+    │ Studio     │   │  Core Engine    │   │ InstrumentMgr  │
+    │ QML UI     │   │  WorkflowEngine │   │ (仪器注册表)    │
+    │ 图形编辑器  │   │  + 安全联锁     │   │ 工厂+多态       │
+    │ Dashboard   │   │  + 判定引擎     │   └────┬──────────┘
+    │ CELL/Log    │   └────────────────┘        │
+    └─────────────┘                     ┌──────┼──────┐
+                                        ▼      ▼      ▼
+                                  ┌──────┐ ┌──────┐ ┌──────┐
+                                  │Serial │ │QProc │ │libPy │
+                                  │Backend│ │+Python│ │Backend│
+                                  └──────┘ └──────┘ └──────┘
+```
+
+### 关键变更（V1.0 → V1.1）
+
+**移除 JSON Workflow 中间格式。** 架构从：
+```
+Excel → 编译转换 → JSON Workflow → 引擎
+```
+改为：
+```
+Excel → XlsxParser → 引擎内存结构 (WorkflowDefinition)
+```
+
+**XlsxParser** 位于 Infrastructure 层，职责：
+1. 调用 Windows PowerShell `Expand-Archive` 解压 .xlsx（ZIP 格式）
+2. 用 `QXmlStreamReader` 解析 `xl/worksheets/sheet1~3.xml`
+3. 从 `xl/sharedStrings.xml` 读取共享字符串表
+4. 映射列：A=工步号 B=设备分类 C=设备名称 D=通道 E=测试项 F=动作指令 G~I=配置参数 J=下限 K=上限 L=单位 M=超时ms N=失败处理 O=备注
+5. 设备类型 → pluginId 自动映射（电源→power.supply, 万用表→measure.voltage 等）
+6. 返回 `WorkflowDefinition` 内存结构，引擎直接执行
+
+**向后兼容：** 引擎仍可加载 `.json` 旧格式（通过 `parseWorkflowDefinitionJson`）。
+
+```
+IBackend (后端抽象)
+├── open(config) → bool
+├── write(data) → bool
+├── readUntil(term, timeout) → QByteArray
+├── readLine(timeout) → QByteArray
+└── close()
+
+InstrumentDriver (仪器驱动抽象)
+├── connect(backend) → bool
+├── disconnect()
+├── sendCmd(cmd) → bool
+├── query(cmd, timeout) → QString
+└── 子类: PowerSupplyDriver, MultimeterDriver, OscilloscopeDriver, RFSignalGenDriver, CANTransceiverDriver, IODriver...
+```
+
+### 2.2 Python 集成双模式
+
+| 模式 | 适用场景 | 实现 |
+|------|---------|------|
+| **QProcess + JSON IPC** | 量产产线（默认） | 独立进程，崩溃不影响主程序 |
+| **libpython 内嵌** | 研发高速闭环控制 | C++ 直接调 Python，零序列化延迟 |
+
+两种模式通过 Backend 基类多态切换，业务代码无差异。
+
+---
+
+## 3. 用例体系单入口
+
+### 3.1 Excel（唯一入口，原生格式）
+
+三 Sheet 结构（对齐行业标准），引擎直接读取，无中间格式转换。
+
+**Sheet 1 - 测试工步表:**
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| 工步号 | ✅ | 全局唯一序号 |
+| 设备分类 | ✅ | 电源/万用表/示波器/RF仪/CAN/IO |
+| 设备名称 | ✅ | 与 Sheet2 对应，如"电源_主" |
+| 通道/端口号 | ✅ | 标准化通道名 PWR_CH_VCC 等 |
+| 测试项名称 | ✅ | 中文描述，报告展示用 |
+| 动作指令 | ✅ | set_volt / read_curr / send_can 等 |
+| 配置参数 1/2/3 | 1必填 | 电压值/频段/报文ID 等 |
+| 下限值 | ✅ | 判定阈值下限 |
+| 上限值 | ✅ | 判定阈值上限 |
+| 单位 | ✅ | V/A/dBm/mV/ms |
+| 超时(ms) | ✅ | 单步超时，超时直接判失败 |
+| 失败处理 | ✅ | 停机/重试N次/继续/标记 |
+| 是否跳过 | ⭕ | 调试用 |
+| 分支工步号 | ⭕ | 条件跳转目标 |
+
+**Sheet 2 - 设备资源映射表:**
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| 设备分类 | ✅ | |
+| 设备名称 | ✅ | 全局唯一 |
+| 通道号 | ✅ | 标准化通道名 |
+| 连接方式 | ✅ | LAN/USB/RS232/GPIB/PCIe/Python |
+| 地址/端口 | ✅ | IP/COM口/脚本路径 |
+| 设备型号 | ✅ | IT7800/DAQ6510/N5182B |
+| 校准有效期 | ✅ | IATF 16949 强制 |
+| 通道固有参数 | ⭕ | 频段范围/最大功率/IO类型 |
+| 驱动后端 | ✅ | serial/qprocess_python/libpython |
+| 启用状态 | ✅ | 启用/禁用 |
+
+**Sheet 3 - 产品追溯信息表:**
+
+| 字段 | 说明 |
+|------|------|
+| 产品型号 | 被测件型号 |
+| 用例版本号 | 如 V1.3.2 |
+| 标准测试节拍 | 产线节拍要求 |
+| 引用标准 | IATF 16949 / 3GPP 等 |
+| 编制人/日期 | |
+| 批准人/日期 | 质量负责人 |
+| 生效日期 | |
+| 版本变更记录 | |
+
+### 3.2 JSON 向后兼容（废弃，仅用于旧数据导入）
+
+引擎保留 `parseWorkflowDefinitionJson()` 函数，可加载 V1.0 遗留的 `.json` 文件。
+新用例统一使用 `.xlsx` 格式。Studio 的 Open 对话框同时支持 `.xlsx` 和 `.json`。
+}
+```
+
+---
+
+## 4. 实施路线
+
+| 阶段 | 内容 | 时间 | 状态 |
+|------|------|------|------|
+| **Phase 0** | IBackend + SerialBackend（从现有插件抽离） | 已完成 | ✅ |
+| **Phase 1** | 原生 Excel 支持：XlsxParser 直接读取三 Sheet | 当前 | ✅ |
+| **Phase 2** | InstrumentManager + 仪器注册表 | 1周 | ⏳ |
+| **Phase 3** | PowerSupplyDriver/MultimeterDriver 迁移到新架构 | 1周 | |
+| **Phase 4** | QProcess+Python Backend | 1周 | |
+| **Phase 5** | libpython Backend（可选） | 后续 | |
+| **Phase 6** | 多 CELL 资源调度增强 | 后续 | |
+
+---
+
+## 5. 与豆包设计的差异总结
+
+| 事项 | 豆包设计 | 本设计 | 理由 |
+|------|---------|--------|------|
+| Excel 三 Sheet | 采纳 | 采纳 | 行业标准做法 |
+| Qt 主控原则 | 采纳 | 采纳 | IATF 16949 合规 |
+| 五层架构 | 采纳 | 采纳 | 精简化（合并 HAL+Plugin） |
+| Python 仅算法 | 不采纳 | Python 可作为完整仪器后端 | 许多仪器只有 Python SDK |
+| Qt Widgets | 不采纳 | 保持 QML | 已有 Studio 投资，QML 同样可产线化 |
+| 系统 YAML 配置 | 采纳 | 采纳 | libyaml 或 yaml-cpp |
+| 安全联锁独立线程 | 采纳 | 采纳 | 硬件急停必须硬实时 |
+| Robot Framework 兼容 | 保留 | 保留 | 作为可选研发补充 |
+| 多 CELL 并行 | 未涉及 | 保留 | 已有实现 |

@@ -1,5 +1,6 @@
 add_library(sample-analyzer-plugin MODULE
     src/SampleAnalyzerPlugin.cpp
+    src/sampleanalyzer.json
 )
 
 target_link_libraries(sample-analyzer-plugin

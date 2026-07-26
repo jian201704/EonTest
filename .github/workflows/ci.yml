@@ -1,31 +1,34 @@
-﻿name: ci
+﻿name: EonTest CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main, master, develop]
+    tags: ['v*']
   pull_request:
-    branches: [ "main" ]
+    branches: [main, master]
 
 jobs:
-  build:
+  build-windows:
+    name: Windows MSVC + Qt6
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with: { version: '6.5.3', modules: 'qtcore qtwidgets qtsql qtnetwork' }
+    - run: cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+    - run: cmake --build build --config Release --parallel
+    - run: ctest --test-dir build -C Release --output-on-failure
+
+  build-linux:
+    name: Linux Ubuntu + Qt6
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: "6.8.2"
-          cache: true
-
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: cmake --build build --config Release
-
-      - name: Run CTest
-        run: ctest --test-dir build --output-on-failure --build-config Release
-
-      - name: Run MVP
-        run: ./build/bin/eon-orchestrator ./build/Plugins ./Workflows/minimal.workflow.json
+    - uses: actions/checkout@v4
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with: { version: '6.5.3', modules: 'qtcore qtwidgets qtsql qtnetwork' }
+    - run: sudo apt-get install -y ninja-build
+    - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    - run: cmake --build build --config Release --parallel
+    - run: ctest --test-dir build -C Release --output-on-failure

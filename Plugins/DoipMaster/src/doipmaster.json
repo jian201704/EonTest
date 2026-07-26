@@ -1,0 +1,8 @@
+{
+  "pluginId": "doip.master",
+  "name": "DoIP Master",
+  "version": "1.0.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "连接 DoIP ECU，执行路由激活并发送 UDS 请求。默认发送 10 01。"
+}

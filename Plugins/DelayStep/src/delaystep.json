@@ -1,0 +1,8 @@
+{
+  "pluginId": "delay",
+  "name": "DelayStepPlugin",
+  "version": "0.1.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "Simple delay/wait step. Sleeps for specified milliseconds."
+}

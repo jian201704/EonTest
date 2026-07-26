@@ -1,0 +1,33 @@
+{
+  "workflowId": "DoIP_10_01_Test",
+  "priority": 10,
+  "entryStepId": "step.doip.session",
+  "initialData": {
+    "transport": "tcp",
+    "host": "172.16.0.8",
+    "port": 13400,
+    "sourceAddress": "0x102D",
+    "targetAddress": "0x1008",
+    "activationType": "0x00",
+    "timeoutMs": 5000
+  },
+  "steps": [
+    {
+      "stepId": "step.doip.session",
+      "pluginId": "doip.master",
+      "maxRetries": 0,
+      "timeoutMs": 10000,
+      "onSuccessStepId": "",
+      "initialData": {
+        "action": "send_uds",
+        "host": "172.16.0.8",
+        "port": 13400,
+        "sourceAddress": "0x102D",
+        "targetAddress": "0x1008",
+        "activationType": "0x00",
+        "udsPayload": "10 01",
+        "expectedPrefix": "50 01"
+      }
+    }
+  ]
+}

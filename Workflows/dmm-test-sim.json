@@ -1,0 +1,139 @@
+{
+  "workflowId": "DMM_Test_Simulation",
+  "priority": 10,
+  "resourceLocks": ["dmm.simulator"],
+  "entryStepId": "step.power_on",
+  "initialData": {
+    "virtualMode": true,
+    "dutId": "SIM-001"
+  },
+  "steps": [
+    {
+      "stepId": "step.power_on",
+      "pluginId": "sample.activity",
+      "parallelGroupId": "",
+      "maxRetries": 1,
+      "timeoutMs": 5000,
+      "onSuccessStepId": "step.measure_voltage_1",
+      "initialData": {
+        "action": "power_on",
+        "description": "Power ON DMM"
+      }
+    },
+    {
+      "stepId": "step.measure_voltage_1",
+      "pluginId": "sample.activity",
+      "maxRetries": 0,
+      "timeoutMs": 10000,
+      "onSuccessStepId": "step.measure_voltage_2",
+      "initialData": {
+        "action": "measure_voltage",
+        "description": "Measure 3.3V rail",
+        "measuredValue": 3.312,
+        "measuredUnit": "V",
+        "lowerLimit": 3.15,
+        "upperLimit": 3.45
+      }
+    },
+    {
+      "stepId": "step.measure_voltage_2",
+      "pluginId": "sample.activity",
+      "maxRetries": 0,
+      "timeoutMs": 10000,
+      "onSuccessStepId": "step.measure_voltage_3",
+      "initialData": {
+        "action": "measure_voltage",
+        "description": "Measure 5.0V rail",
+        "measuredValue": 4.987,
+        "measuredUnit": "V",
+        "lowerLimit": 4.75,
+        "upperLimit": 5.25
+      }
+    },
+    {
+      "stepId": "step.measure_voltage_3",
+      "pluginId": "sample.activity",
+      "maxRetries": 0,
+      "timeoutMs": 10000,
+      "onSuccessStepId": "step.measure_current",
+      "initialData": {
+        "action": "measure_voltage",
+        "description": "Measure 12.0V rail",
+        "measuredValue": 11.892,
+        "measuredUnit": "V",
+        "lowerLimit": 11.4,
+        "upperLimit": 12.6
+      }
+    },
+    {
+      "stepId": "step.measure_current",
+      "pluginId": "sample.activity",
+      "maxRetries": 1,
+      "timeoutMs": 8000,
+      "onSuccessStepId": "step.measure_resistance",
+      "initialData": {
+        "action": "measure_current",
+        "description": "Measure standby current",
+        "measuredValue": 0.023,
+        "measuredUnit": "A",
+        "lowerLimit": 0.01,
+        "upperLimit": 0.05
+      }
+    },
+    {
+      "stepId": "step.measure_resistance",
+      "pluginId": "sample.activity",
+      "maxRetries": 0,
+      "timeoutMs": 5000,
+      "onSuccessStepId": "step.analyze_results",
+      "initialData": {
+        "action": "measure_resistance",
+        "description": "Measure input resistance",
+        "measuredValue": 10023,
+        "measuredUnit": "Ω",
+        "lowerLimit": 9500,
+        "upperLimit": 10500
+      }
+    },
+    {
+      "stepId": "step.analyze_results",
+      "pluginId": "sample.analyzer",
+      "maxRetries": 0,
+      "timeoutMs": 3000,
+      "onSuccessStepId": "step.report",
+      "initialData": {
+        "action": "analyze",
+        "description": "Analyze all measurements",
+        "analyzeValue": 98.5,
+        "analyzeUnit": "%",
+        "analyzeMin": 95.0,
+        "analyzeMax": 100.0,
+        "analyzePassed": true,
+        "analyzeMessage": "All measurements within limits"
+      }
+    },
+    {
+      "stepId": "step.report",
+      "pluginId": "sample.reporter",
+      "maxRetries": 1,
+      "timeoutMs": 5000,
+      "onSuccessStepId": "step.power_off",
+      "initialData": {
+        "action": "report",
+        "description": "Generate test report"
+      }
+    },
+    {
+      "stepId": "step.power_off",
+      "pluginId": "sample.activity",
+      "maxRetries": 0,
+      "timeoutMs": 3000,
+      "onSuccessStepId": "",
+      "onFailureStepId": "",
+      "initialData": {
+        "action": "power_off",
+        "description": "Power OFF DMM"
+      }
+    }
+  ]
+}

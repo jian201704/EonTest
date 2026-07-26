@@ -1,0 +1,8 @@
+{
+  "pluginId": "power.supply",
+  "name": "PowerSupplyPlugin",
+  "version": "0.1.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "Programmable power supply control via SCPI serial/USB. Supports voltage/current setting and measurement readback."
+}

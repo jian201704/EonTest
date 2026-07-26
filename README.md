@@ -56,11 +56,11 @@ Run multiple workflow tasks with worker pool:
 ./build/bin/eon-orchestrator --cells 2 ./build/Plugins ./Workflows/minimal.workflow.json ./Workflows/parallel.workflow.json
 ```
 
-Scheduler persistence/recovery and retry policy:
+Scheduler persistence/recovery and retry policy (SQLite state store):
 
 ```bash
-./build/bin/eon-orchestrator --cells 2 --state ./build/bin/orchestration-state.json --max-task-retries 2 --retry-backoff-ms 300 ./build/Plugins ./Workflows/minimal.workflow.json ./Workflows/compensation.workflow.json
-./build/bin/eon-orchestrator --resume --state ./build/bin/orchestration-state.json
+./build/bin/eon-orchestrator --cells 2 --state ./build/bin/orchestration-state.db --max-task-retries 2 --retry-backoff-ms 300 ./build/Plugins ./Workflows/minimal.workflow.json ./Workflows/compensation.workflow.json
+./build/bin/eon-orchestrator --resume --state ./build/bin/orchestration-state.db
 ```
 
 Stop-on-failure scheduling policy (stop dispatching new tasks after first terminal failure):
@@ -105,11 +105,23 @@ Parallel group primitive example:
 ./build/bin/eon-orchestrator ./build/Plugins ./Workflows/parallel.workflow.json
 ```
 
-Studio visual prototype (workflow list + run controls + live telemetry):
+Studio visual prototype (workflow list + run controls + live telemetry + task details):
 
 ```bash
 ./build/bin/eon-studio
 ```
+
+Studio recovery mode (open UI with resume preset):
+
+```bash
+./build/bin/eon-studio --resume --state ./build/bin/orchestration-state.db
+```
+
+Studio operations:
+
+- **Run Selected**: run selected workflows with current scheduler options.
+- **Retry Failed**: rerun workflows that failed/skipped in last run.
+- **Resume**: recover from scheduler state DB using `--resume`.
 
 Studio multi-cell monitoring:
 
@@ -146,3 +158,26 @@ Workflow DSL fields:
 - Project version is stored in `VERSION`.
 - CMake `project()` version is read from `VERSION`.
 - Follow **SemVer** (`MAJOR.MINOR.PATCH`) for releases and tags.
+
+
+
+
+
+
+## Packaging
+
+Package build (Release artifacts + plugins + workflows):
+
+```bash
+cmake --install build --prefix ./dist
+cpack --config build/CPackConfig.cmake
+```
+
+## Extended smoke tests
+
+Additional scheduler smoke tests now include:
+
+- `orchestrator_parallel_smoke`
+- `orchestrator_stop_on_failure_smoke` (expected failure path)
+
+

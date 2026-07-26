@@ -91,6 +91,7 @@ bool parseWorkflowDefinitionJson(
         step.conditionKey = requiredString(stepObject, "conditionKey");
         step.conditionEquals = requiredString(stepObject, "conditionEquals");
         step.compensationStepId = requiredString(stepObject, "compensationStepId");
+        step.initialData = stepObject.value("initialData").toObject().toVariantMap();
 
         step.policy.maxRetries = stepObject.value("maxRetries").toInt(0);
         step.policy.timeoutMs = stepObject.value("timeoutMs").toInt(0);

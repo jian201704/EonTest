@@ -1,0 +1,8 @@
+{
+  "pluginId": "scpi.command",
+  "name": "ScpiStepPlugin",
+  "version": "1.0.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "Generic SCPI command step. Supports Serial (COM), TCP/IP (LAN), and USB instruments. Configure connection and command in workflow Excel — no C++ coding required."
+}

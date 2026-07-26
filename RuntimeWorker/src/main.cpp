@@ -3,14 +3,42 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
+#include <QStandardPaths>
+#include <QThread>
 
 #include "eon/application/RunWorkflowUseCase.h"
 #include "eon/core/EventBus.h"
 #include "eon/domain/WorkflowDefinitionIO.h"
+#include "eon/infra/XlsxParser.h"
 
 namespace {
+
+/// 控制文件路径（与 StudioBackend 的 controlFilePath() 路径保持一致）
+static QString controlFilePath() {
+    const QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    return tempDir + "/eonstudio-exec-control.json";
+}
+
+/// 检查控制文件，读取执行指令
+static QString readControlCommand() {
+    QFile file(controlFilePath());
+    if (!file.open(QIODevice::ReadOnly)) return {};
+    QByteArray data = file.readAll();
+    file.close();
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) return {};
+    return doc.object().value("command").toString().toLower();
+}
+
+/// 清除控制文件
+static void clearControlFile() {
+    QFile::remove(controlFilePath());
+}
 
 void emitTelemetry(const QString& eventName, const QJsonObject& fields = {}) {
     QJsonObject payload{
@@ -50,6 +78,7 @@ int main(int argc, char* argv[]) {
     int parallelBatchFinishedCount = 0;
     int analyzerStartedCount = 0;
     int analyzerFinishedCount = 0;
+    int analyzerFailedCount = 0;
     int reporterStartedCount = 0;
     int reporterFinishedCount = 0;
 
@@ -111,6 +140,10 @@ int main(int argc, char* argv[]) {
         analyzerFinishedCount += 1;
         emitTelemetry("analyzer.finished", QJsonObject::fromVariantMap(payload));
     });
+    eventBus.subscribe("analyzer.failed", [&analyzerFailedCount](const QVariantMap& payload) {
+        analyzerFailedCount += 1;
+        emitTelemetry("analyzer.failed", QJsonObject::fromVariantMap(payload));
+    });
     eventBus.subscribe("reporter.started", [&reporterStartedCount](const QVariantMap& payload) {
         reporterStartedCount += 1;
         emitTelemetry("reporter.started", QJsonObject::fromVariantMap(payload));
@@ -123,6 +156,55 @@ int main(int argc, char* argv[]) {
     eon::runtime::WorkflowEngine engine(&eventBus);
     eon::application::RunWorkflowUseCase useCase(&engine);
 
+    // 设置暂停/跳过回调（通过控制文件与 Studio UI 通信）
+    engine.onBreakOffered = [&engine](const QString& stepId) -> eon::runtime::ExecutionControl {
+        QString cmd = readControlCommand();
+        if (cmd.isEmpty() || cmd == "continue") {
+            return eon::runtime::ExecutionControl::Continue;
+        }
+        if (cmd == "pause") {
+            clearControlFile();
+            emitTelemetry("workflow.paused", {{"stepId", stepId}});
+            // 轮询等待 resume/skip/abort
+            while (true) {
+                QThread::msleep(200);
+                cmd = readControlCommand();
+                if (cmd == "resume") {
+                    clearControlFile();
+                    emitTelemetry("workflow.resumed", {{"stepId", stepId}});
+                    return eon::runtime::ExecutionControl::Continue;
+                }
+                if (cmd == "skip") {
+                    clearControlFile();
+                    emitTelemetry("activity.skipped", {
+                        {"stepId", stepId},
+                        {"reason", "user skip after pause"}
+                    });
+                    return eon::runtime::ExecutionControl::Skip;
+                }
+                if (cmd == "abort" || cmd == "stop") {
+                    clearControlFile();
+                    emitTelemetry("workflow.aborted", {{"stepId", stepId}});
+                    return eon::runtime::ExecutionControl::Abort;
+                }
+            }
+        }
+        if (cmd == "skip") {
+            clearControlFile();
+            emitTelemetry("activity.skipped", {
+                {"stepId", stepId},
+                {"reason", "user skip"}
+            });
+            return eon::runtime::ExecutionControl::Skip;
+        }
+        if (cmd == "abort" || cmd == "stop") {
+            clearControlFile();
+            emitTelemetry("workflow.aborted", {{"stepId", stepId}});
+            return eon::runtime::ExecutionControl::Abort;
+        }
+        return eon::runtime::ExecutionControl::Continue;
+    };
+
     emitTelemetry("worker.started", {
         {"pluginDirectory", pluginDirectory},
         {"workflowFilePath", workflowFilePath}
@@ -134,17 +216,29 @@ int main(int argc, char* argv[]) {
     if (workflowFilePath.isEmpty()) {
         runSucceeded = useCase.runMinimal(pluginDirectory, &error);
     } else {
-        QFile workflowFile(workflowFilePath);
-        if (!workflowFile.open(QIODevice::ReadOnly)) {
-            error = QString("Cannot open workflow file '%1'.").arg(workflowFilePath);
-        } else if (!eon::domain::parseWorkflowDefinitionJson(
-                       workflowFile.readAll(),
-                       &workflowDefinition,
-                       &error
-                   )) {
-            error = QString("Cannot parse workflow file '%1': %2").arg(workflowFilePath, error);
+        QString suffix = QFileInfo(workflowFilePath).suffix().toLower();
+        if (suffix == "xlsx") {
+            // 原生 .xlsx 格式
+            if (!eon::infra::parseWorkflowDefinitionXlsx(
+                    workflowFilePath, &workflowDefinition, &error)) {
+                error = QString("Cannot parse Excel file '%1': %2").arg(workflowFilePath, error);
+            } else {
+                runSucceeded = useCase.runWorkflowDefinition(pluginDirectory, workflowDefinition, &error);
+            }
         } else {
-            runSucceeded = useCase.runWorkflowDefinition(pluginDirectory, workflowDefinition, &error);
+            // .json 兼容（旧格式）
+            QFile workflowFile(workflowFilePath);
+            if (!workflowFile.open(QIODevice::ReadOnly)) {
+                error = QString("Cannot open workflow file '%1'.").arg(workflowFilePath);
+            } else if (!eon::domain::parseWorkflowDefinitionJson(
+                           workflowFile.readAll(),
+                           &workflowDefinition,
+                           &error
+                       )) {
+                error = QString("Cannot parse workflow file '%1': %2").arg(workflowFilePath, error);
+            } else {
+                runSucceeded = useCase.runWorkflowDefinition(pluginDirectory, workflowDefinition, &error);
+            }
         }
     }
 
@@ -163,6 +257,7 @@ int main(int argc, char* argv[]) {
             {"parallelBatchFinished", parallelBatchFinishedCount},
             {"analyzerStarted", analyzerStartedCount},
             {"analyzerFinished", analyzerFinishedCount},
+            {"analyzerFailed", analyzerFailedCount},
             {"reporterStarted", reporterStartedCount},
             {"reporterFinished", reporterFinishedCount},
             {"error", error}
@@ -185,6 +280,7 @@ int main(int argc, char* argv[]) {
         {"parallelBatchFinished", parallelBatchFinishedCount},
         {"analyzerStarted", analyzerStartedCount},
         {"analyzerFinished", analyzerFinishedCount},
+        {"analyzerFailed", analyzerFailedCount},
         {"reporterStarted", reporterStartedCount},
         {"reporterFinished", reporterFinishedCount}
     });

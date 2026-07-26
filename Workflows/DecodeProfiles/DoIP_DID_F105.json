@@ -1,0 +1,19 @@
+[
+  {
+    "name": "rawValue",
+    "offset": 3,
+    "length": 2,
+    "type": "uint16",
+    "endian": "big",
+    "unit": "raw"
+  },
+  {
+    "name": "engineSpeed",
+    "offset": 3,
+    "length": 2,
+    "type": "uint16",
+    "endian": "big",
+    "formula": "x / 4",
+    "unit": "rpm"
+  }
+]

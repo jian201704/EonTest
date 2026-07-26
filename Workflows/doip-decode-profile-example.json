@@ -1,0 +1,27 @@
+{
+  "workflowId": "DoIP_Decode_Profile_Example",
+  "priority": 10,
+  "entryStepId": "step.doip.did",
+  "initialData": {
+    "transport": "tcp",
+    "host": "172.16.0.8",
+    "port": 13400,
+    "sourceAddress": "0x102D",
+    "targetAddress": "0x1008",
+    "activationType": "0x00",
+    "timeoutMs": 5000
+  },
+  "steps": [
+    {
+      "stepId": "step.doip.did",
+      "pluginId": "doip.master",
+      "maxRetries": 0,
+      "timeoutMs": 10000,
+      "initialData": {
+        "udsPayload": "22 F1 05",
+        "expectedPrefix": "62 F1 05",
+        "decodeProfile": "Workflows/DecodeProfiles/DoIP_DID_F105.json"
+      }
+    }
+  ]
+}

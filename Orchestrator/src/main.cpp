@@ -1,4 +1,4 @@
-#include <QCoreApplication>
+﻿#include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
@@ -10,11 +10,20 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QProcess>
-#include <QSaveFile>
+
+#include <QFileInfo>
 #include <QSet>
+#include <QSqlDatabase>
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QStringList>
 #include <QThread>
 #include <QtGlobal>
+#include <memory>
+
+#include "eon/orchestrator/SchedulingPolicy.h"
+#include "eon/core/Trace.h"
+#include "eon/core/Metrics.h"
 
 namespace {
 
@@ -121,6 +130,17 @@ bool parseWorkflowTaskMetadata(WorkflowTask* task, QString* errorMessage) {
         return true;
     }
 
+    QString suffix = QFileInfo(task->workflowPath).suffix().toLower();
+
+    if (suffix == "xlsx") {
+        // .xlsx: 元数据从文件名取，完整解析交给 RuntimeWorker
+        task->workflowId = QFileInfo(task->workflowPath).completeBaseName();
+        task->resourceLocks.clear();
+        task->priority = 0;
+        return true;
+    }
+
+    // .json 兼容（旧格式）
     QFile file(task->workflowPath);
     if (!file.open(QIODevice::ReadOnly)) {
         if (errorMessage != nullptr) {
@@ -202,36 +222,137 @@ WorkflowTask taskFromJson(const QJsonObject& object) {
     return task;
 }
 
-int selectRunnableTaskIndex(const QList<WorkflowTask>& tasks, const QSet<QString>& heldLocks, qint64 nowMs) {
-    int selectedIndex = -1;
-    for (int i = 0; i < tasks.size(); ++i) {
-        if (!isTaskRunnable(tasks.at(i), heldLocks, nowMs)) {
-            continue;
-        }
-        if (selectedIndex < 0) {
-            selectedIndex = i;
-            continue;
-        }
-
-        const WorkflowTask& candidate = tasks.at(i);
-        const WorkflowTask& selected = tasks.at(selectedIndex);
-        if (candidate.priority != selected.priority) {
-            if (candidate.priority > selected.priority) {
-                selectedIndex = i;
-            }
-            continue;
-        }
-        if (candidate.nextRunAtMs != selected.nextRunAtMs) {
-            if (candidate.nextRunAtMs < selected.nextRunAtMs) {
-                selectedIndex = i;
-            }
-            continue;
-        }
-        if (candidate.enqueueOrder < selected.enqueueOrder) {
-            selectedIndex = i;
-        }
+int selectRunnableTaskIndex(const QList<WorkflowTask>& tasks,
+                            const QSet<QString>& heldLocks,
+                            qint64 nowMs,
+                            const eon::orchestrator::SchedulingPolicy* policy) {
+    // 将 WorkflowTask 转换为 TaskDescriptor
+    QList<eon::orchestrator::TaskDescriptor> descriptors;
+    descriptors.reserve(tasks.size());
+    for (const auto& t : tasks) {
+        eon::orchestrator::TaskDescriptor d;
+        d.taskId = t.taskId;
+        d.priority = t.priority;
+        d.enqueueOrder = t.enqueueOrder;
+        d.nextRunAtMs = t.nextRunAtMs;
+        d.resourceLocks = t.resourceLocks;
+        d.isPending = (t.status == TaskStatus::Pending);
+        descriptors.append(d);
     }
-    return selectedIndex;
+
+    const int descIndex = policy->selectNext(descriptors, heldLocks, nowMs);
+    if (descIndex < 0) return -1;
+
+    // 映射回 TaskDescriptor -> tasks 索引
+    const int taskId = descriptors.at(descIndex).taskId;
+    for (int i = 0; i < tasks.size(); ++i) {
+        if (tasks.at(i).taskId == taskId) return i;
+    }
+    return -1;
+}
+
+bool openSchedulerDatabase(const QString& stateFilePath, const QString& connectionName, QSqlDatabase* db, QString* errorMessage) {
+    if (db == nullptr) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Database output is null.";
+        }
+        return false;
+    }
+
+    QSqlDatabase database = QSqlDatabase::addDatabase("QSQLITE", connectionName);
+    database.setDatabaseName(stateFilePath);
+    if (!database.open()) {
+        if (errorMessage != nullptr) {
+            *errorMessage = QString("Cannot open scheduler state database '%1': %2")
+                                .arg(stateFilePath, database.lastError().text());
+        }
+        return false;
+    }
+
+    QSqlQuery query(database);
+    if (!query.exec("CREATE TABLE IF NOT EXISTS scheduler_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)")) {
+        if (errorMessage != nullptr) {
+            *errorMessage = QString("Cannot initialize scheduler_state table in '%1': %2")
+                                .arg(stateFilePath, query.lastError().text());
+        }
+        return false;
+    }
+    if (!query.exec(
+            "CREATE TABLE IF NOT EXISTS scheduler_tasks ("
+            "task_id INTEGER PRIMARY KEY, "
+            "workflow_path TEXT, "
+            "workflow_id TEXT, "
+            "resource_locks TEXT, "
+            "priority INTEGER NOT NULL, "
+            "enqueue_order INTEGER NOT NULL, "
+            "attempts_made INTEGER NOT NULL, "
+            "max_retries INTEGER NOT NULL, "
+            "next_run_at_ms INTEGER NOT NULL, "
+            "last_exit_code INTEGER NOT NULL, "
+            "last_error TEXT, "
+            "status TEXT"
+            ")"
+        )) {
+        if (errorMessage != nullptr) {
+            *errorMessage = QString("Cannot initialize scheduler_tasks table in '%1': %2")
+                                .arg(stateFilePath, query.lastError().text());
+        }
+        return false;
+    }
+
+    *db = database;
+    return true;
+}
+
+bool writeSchedulerSetting(QSqlDatabase* db, const QString& key, const QString& value, QString* errorMessage) {
+    if (db == nullptr || !db->isOpen()) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Scheduler database is not open.";
+        }
+        return false;
+    }
+
+    QSqlQuery query(*db);
+    query.prepare(
+        "INSERT INTO scheduler_state(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+    );
+    query.addBindValue(key);
+    query.addBindValue(value);
+    if (!query.exec()) {
+        if (errorMessage != nullptr) {
+            *errorMessage = QString("Cannot upsert scheduler setting '%1': %2")
+                                .arg(key, query.lastError().text());
+        }
+        return false;
+    }
+    return true;
+}
+
+QString readSchedulerSetting(QSqlDatabase* db, const QString& key, const QString& defaultValue) {
+    if (db == nullptr || !db->isOpen()) {
+        return defaultValue;
+    }
+    QSqlQuery query(*db);
+    query.prepare("SELECT value FROM scheduler_state WHERE key = ?");
+    query.addBindValue(key);
+    if (!query.exec() || !query.next()) {
+        return defaultValue;
+    }
+    return query.value(0).toString();
+}
+
+QString serializeLocks(const QStringList& resourceLocks) {
+    return resourceLocks.join(QChar(0x1F));
+}
+
+QStringList deserializeLocks(const QString& encodedLocks) {
+    if (encodedLocks.isEmpty()) {
+        return {};
+    }
+    QStringList values = encodedLocks.split(QChar(0x1F), Qt::SkipEmptyParts);
+    values.removeDuplicates();
+    return values;
 }
 
 bool saveSchedulerState(
@@ -243,36 +364,98 @@ bool saveSchedulerState(
     const QList<WorkflowTask>& tasks,
     QString* errorMessage
 ) {
-    QJsonArray taskArray;
-    for (const auto& task : tasks) {
-        taskArray.append(taskToJson(task));
-    }
+    const QString connectionName = QString("orchestrator-save-%1")
+                                       .arg(QString::number(static_cast<qulonglong>(qHash(stateFilePath))));
 
-    const QJsonObject root{
-        {"version", 1},
-        {"updatedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
-        {"pluginDirectory", pluginDirectory},
-        {"cellCount", cellCount},
-        {"defaultMaxTaskRetries", defaultMaxTaskRetries},
-        {"retryBackoffMs", retryBackoffMs},
-        {"tasks", taskArray}
-    };
-
-    QSaveFile stateFile(stateFilePath);
-    if (!stateFile.open(QIODevice::WriteOnly)) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QString("Cannot open scheduler state file '%1' for writing.").arg(stateFilePath);
+    QSqlDatabase db;
+    if (!openSchedulerDatabase(stateFilePath, connectionName, &db, errorMessage)) {
+        if (QSqlDatabase::contains(connectionName)) {
+            QSqlDatabase::removeDatabase(connectionName);
         }
         return false;
     }
-    stateFile.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    if (!stateFile.commit()) {
+
+    bool ok = true;
+    if (!db.transaction()) {
         if (errorMessage != nullptr) {
-            *errorMessage = QString("Cannot commit scheduler state file '%1'.").arg(stateFilePath);
+            *errorMessage = QString("Cannot start scheduler state transaction for '%1': %2")
+                                .arg(stateFilePath, db.lastError().text());
         }
-        return false;
+        ok = false;
     }
-    return true;
+
+    if (ok) {
+        ok = writeSchedulerSetting(&db, "version", "2", errorMessage)
+             && writeSchedulerSetting(&db, "updatedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs), errorMessage)
+             && writeSchedulerSetting(&db, "pluginDirectory", pluginDirectory, errorMessage)
+             && writeSchedulerSetting(&db, "cellCount", QString::number(cellCount), errorMessage)
+             && writeSchedulerSetting(&db, "defaultMaxTaskRetries", QString::number(defaultMaxTaskRetries), errorMessage)
+             && writeSchedulerSetting(&db, "retryBackoffMs", QString::number(retryBackoffMs), errorMessage);
+    }
+
+    if (ok) {
+        QSqlQuery clearTasks(db);
+        if (!clearTasks.exec("DELETE FROM scheduler_tasks")) {
+            if (errorMessage != nullptr) {
+                *errorMessage = QString("Cannot clear scheduler_tasks in '%1': %2")
+                                    .arg(stateFilePath, clearTasks.lastError().text());
+            }
+            ok = false;
+        }
+    }
+
+    if (ok) {
+        QSqlQuery insertTask(db);
+        insertTask.prepare(
+            "INSERT INTO scheduler_tasks("
+            "task_id, workflow_path, workflow_id, resource_locks, priority, enqueue_order, "
+            "attempts_made, max_retries, next_run_at_ms, last_exit_code, last_error, status"
+            ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        );
+
+        for (const auto& task : tasks) {
+            insertTask.bindValue(0, task.taskId);
+            insertTask.bindValue(1, task.workflowPath.isNull() ? QString{} : task.workflowPath);
+            insertTask.bindValue(2, task.workflowId.isNull() ? QString{} : task.workflowId);
+            insertTask.bindValue(3, serializeLocks(task.resourceLocks));
+            insertTask.bindValue(4, task.priority);
+            insertTask.bindValue(5, task.enqueueOrder);
+            insertTask.bindValue(6, task.attemptsMade);
+            insertTask.bindValue(7, task.maxRetries);
+            insertTask.bindValue(8, task.nextRunAtMs);
+            insertTask.bindValue(9, task.lastExitCode);
+            insertTask.bindValue(10, task.lastError.isNull() ? QString{} : task.lastError);
+            insertTask.bindValue(11, statusToString(task.status));
+
+            if (!insertTask.exec()) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = QString("Cannot insert scheduler task %1 into '%2': %3")
+                                        .arg(task.taskId)
+                                        .arg(stateFilePath, insertTask.lastError().text());
+                }
+                ok = false;
+                break;
+            }
+            insertTask.finish();
+        }
+    }
+
+    if (ok) {
+        if (!db.commit()) {
+            if (errorMessage != nullptr) {
+                *errorMessage = QString("Cannot commit scheduler state database '%1': %2")
+                                    .arg(stateFilePath, db.lastError().text());
+            }
+            ok = false;
+        }
+    } else {
+        db.rollback();
+    }
+
+    db.close();
+    db = QSqlDatabase();
+    QSqlDatabase::removeDatabase(connectionName);
+    return ok;
 }
 
 bool loadSchedulerState(
@@ -290,46 +473,74 @@ bool loadSchedulerState(
         }
         return false;
     }
-
-    QFile stateFile(stateFilePath);
-    if (!stateFile.open(QIODevice::ReadOnly)) {
+    if (!QFileInfo::exists(stateFilePath)) {
         if (errorMessage != nullptr) {
-            *errorMessage = QString("Cannot open scheduler state file '%1'.").arg(stateFilePath);
+            *errorMessage = QString("Scheduler state database '%1' does not exist.").arg(stateFilePath);
         }
         return false;
     }
 
-    QJsonParseError parseError;
-    const QJsonDocument doc = QJsonDocument::fromJson(stateFile.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        if (errorMessage != nullptr) {
-            *errorMessage = QString("Invalid scheduler state file '%1': %2")
-                                .arg(stateFilePath, parseError.errorString());
+    const QString connectionName = QString("orchestrator-load-%1")
+                                       .arg(QString::number(static_cast<qulonglong>(qHash(stateFilePath))));
+
+    QSqlDatabase db;
+    if (!openSchedulerDatabase(stateFilePath, connectionName, &db, errorMessage)) {
+        if (QSqlDatabase::contains(connectionName)) {
+            QSqlDatabase::removeDatabase(connectionName);
         }
         return false;
     }
 
-    const QJsonObject root = doc.object();
     if (pluginDirectory != nullptr) {
-        *pluginDirectory = root.value("pluginDirectory").toString().trimmed();
+        *pluginDirectory = readSchedulerSetting(&db, "pluginDirectory", QString{}).trimmed();
     }
     if (savedCellCount != nullptr) {
-        *savedCellCount = root.value("cellCount").toInt(1);
+        *savedCellCount = qMax(1, readSchedulerSetting(&db, "cellCount", "1").toInt());
     }
     if (savedDefaultMaxTaskRetries != nullptr) {
-        *savedDefaultMaxTaskRetries = root.value("defaultMaxTaskRetries").toInt(1);
+        *savedDefaultMaxTaskRetries = qMax(0, readSchedulerSetting(&db, "defaultMaxTaskRetries", "1").toInt());
     }
     if (savedRetryBackoffMs != nullptr) {
-        *savedRetryBackoffMs = root.value("retryBackoffMs").toInt(300);
+        *savedRetryBackoffMs = qMax(0, readSchedulerSetting(&db, "retryBackoffMs", "300").toInt());
     }
 
     tasks->clear();
-    const QJsonArray taskArray = root.value("tasks").toArray();
-    for (const auto& value : taskArray) {
-        if (value.isObject()) {
-            tasks->append(taskFromJson(value.toObject()));
+    QSqlQuery query(db);
+    if (!query.exec(
+            "SELECT task_id, workflow_path, workflow_id, resource_locks, priority, enqueue_order, "
+            "attempts_made, max_retries, next_run_at_ms, last_exit_code, last_error, status "
+            "FROM scheduler_tasks ORDER BY enqueue_order ASC, task_id ASC"
+        )) {
+        if (errorMessage != nullptr) {
+            *errorMessage = QString("Cannot query scheduler tasks from '%1': %2")
+                                .arg(stateFilePath, query.lastError().text());
         }
+        db.close();
+        db = QSqlDatabase();
+        QSqlDatabase::removeDatabase(connectionName);
+        return false;
     }
+
+    while (query.next()) {
+        WorkflowTask task;
+        task.taskId = query.value(0).toInt();
+        task.workflowPath = query.value(1).toString();
+        task.workflowId = query.value(2).toString();
+        task.resourceLocks = deserializeLocks(query.value(3).toString());
+        task.priority = query.value(4).toInt();
+        task.enqueueOrder = query.value(5).toLongLong();
+        task.attemptsMade = query.value(6).toInt();
+        task.maxRetries = qMax(0, query.value(7).toInt());
+        task.nextRunAtMs = query.value(8).toLongLong();
+        task.lastExitCode = query.value(9).toInt();
+        task.lastError = query.value(10).toString();
+        task.status = stringToStatus(query.value(11).toString());
+        tasks->append(task);
+    }
+
+    db.close();
+    db = QSqlDatabase();
+    QSqlDatabase::removeDatabase(connectionName);
     return true;
 }
 
@@ -348,7 +559,9 @@ int main(int argc, char* argv[]) {
     int retryBackoffMs = 300;
     bool retryBackoffSpecified = false;
     bool stopOnFailure = false;
-    QString stateFilePath = QDir(QCoreApplication::applicationDirPath()).filePath("orchestration-state.json");
+    QString schedulingPolicyName = "priority";
+    int cellTimeoutMs = 300000;  // 5 min default
+    QString stateFilePath = QDir(QCoreApplication::applicationDirPath()).filePath("orchestration-state.db");
 
     for (int i = 1; i < argc; ++i) {
         const QString argument = QString::fromLocal8Bit(argv[i]);
@@ -411,6 +624,18 @@ int main(int argc, char* argv[]) {
         }
         if (argument == "--stop-on-failure") {
             stopOnFailure = true;
+            continue;
+        }
+        if (argument == "--scheduling-policy") {
+            if (i + 1 >= argc) { qCritical() << "--scheduling-policy requires a value."; return 2; }
+            schedulingPolicyName = QString::fromLocal8Bit(argv[++i]);
+            continue;
+        }
+        if (argument == "--cell-timeout-ms") {
+            if (i + 1 >= argc) { qCritical() << "--cell-timeout-ms requires a value."; return 2; }
+            bool ok = false;
+            cellTimeoutMs = QString::fromLocal8Bit(argv[++i]).toInt(&ok);
+            if (!ok || cellTimeoutMs <= 0) { qCritical() << "Invalid --cell-timeout-ms value."; return 2; }
             continue;
         }
 
@@ -516,6 +741,11 @@ int main(int argc, char* argv[]) {
         allTasks.append(task);
     }
 
+    // 创建调度策略
+    auto policyPtr = std::unique_ptr<eon::orchestrator::SchedulingPolicy>(
+        eon::orchestrator::createPolicy(schedulingPolicyName));
+    auto* policy = policyPtr.get();
+
     emitTelemetry("orchestration.started", {
         {"workerPath", workerPath},
         {"pluginDirectory", pluginDirectory},
@@ -525,7 +755,9 @@ int main(int argc, char* argv[]) {
         {"stateFilePath", stateFilePath},
         {"maxTaskRetries", defaultMaxTaskRetries},
         {"retryBackoffMs", retryBackoffMs},
-        {"stopOnFailure", stopOnFailure}
+        {"stopOnFailure", stopOnFailure},
+        {"schedulingPolicy", policy->name()},
+        {"cellTimeoutMs", cellTimeoutMs}
     });
 
     QString saveError;
@@ -606,7 +838,7 @@ int main(int argc, char* argv[]) {
         }
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
         while (runningTasks.size() < cellCount) {
-            int runnableIndex = selectRunnableTaskIndex(allTasks, heldLocks, nowMs);
+            int runnableIndex = selectRunnableTaskIndex(allTasks, heldLocks, nowMs, policy);
             if (runnableIndex < 0) {
                 break;
             }
@@ -619,8 +851,17 @@ int main(int argc, char* argv[]) {
                 workerArgs.append(task.workflowPath);
             }
             worker->setArguments(workerArgs);
+            // 调试：记录 worker 启动命令
+            qInfo().noquote() << QString("[DEBUG] Spawning worker: %1 %2")
+                .arg(workerPath, workerArgs.join(' '));
             worker->setProcessChannelMode(QProcess::MergedChannels);
+            QProcessEnvironment workerEnv = QProcessEnvironment::systemEnvironment();
+            workerEnv.insert("EON_TRACE_ID", eon::core::TraceContext::instance().currentTraceId().toString());
+            worker->setProcessEnvironment(workerEnv);
             worker->start();
+            worker->setProperty("startedAtMs", QDateTime::currentMSecsSinceEpoch());
+
+            eon::core::MetricsCollector::instance().incCounter("orchestrator.tasks.started");
 
             task.attemptsMade += 1;
             task.status = TaskStatus::Running;
@@ -683,6 +924,7 @@ int main(int argc, char* argv[]) {
             }
 
             const int slotId = nextSlotId++;
+            const int cellId = (slotId - 1) % qMax(1, cellCount);
             runningTasks.append(RunningTask{
                 .slotId = slotId,
                 .taskId = task.taskId,
@@ -692,6 +934,7 @@ int main(int argc, char* argv[]) {
             emitTelemetry("orchestration.task.started", {
                 {"taskId", task.taskId},
                 {"slotId", slotId},
+                {"cellId", cellId},
                 {"workflowId", task.workflowId},
                 {"workflowFilePath", task.workflowPath},
                 {"resourceLocks", toJsonArray(task.resourceLocks)},
@@ -725,7 +968,33 @@ int main(int argc, char* argv[]) {
     };
 
     startRunnableTasks();
+    qint64 lastHealthCheckMs = 0;
     while (hasPendingWork() || !runningTasks.isEmpty()) {
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+        // CELL 健康检查（每 10 秒）
+        if (nowMs - lastHealthCheckMs > 10000) {
+            lastHealthCheckMs = nowMs;
+            for (int index = runningTasks.size() - 1; index >= 0; --index) {
+                RunningTask& running = runningTasks[index];
+                if (running.process->state() == QProcess::Running) {
+                    const qint64 runningMs = running.process->property("startedAtMs").toLongLong();
+                    if (runningMs > 0 && (nowMs - runningMs) > cellTimeoutMs) {
+                        qWarning() << "CELL" << running.slotId << "task" << running.taskId
+                                   << "timed out after" << (nowMs - runningMs) << "ms, killing...";
+                        emitTelemetry("orchestration.cell.timeout", {
+                            {"slotId", running.slotId},
+                            {"taskId", running.taskId},
+                            {"elapsedMs", nowMs - runningMs},
+                            {"timeoutMs", cellTimeoutMs}
+                        });
+                        running.process->kill();
+                        running.process->waitForFinished(2000);
+                    }
+                }
+            }
+        }
+
         for (int index = runningTasks.size() - 1; index >= 0; --index) {
             RunningTask& running = runningTasks[index];
             flushProcessOutput(running.process);
@@ -751,10 +1020,14 @@ int main(int argc, char* argv[]) {
                 task.lastExitCode = exitCode;
                 task.lastError.clear();
                 tasksSucceeded += 1;
+                eon::core::MetricsCollector::instance().incCounter("orchestrator.tasks.succeeded");
+                eon::core::MetricsCollector::instance().incGauge("orchestrator.tasks.running", -1);
             } else {
                 task.status = TaskStatus::Failed;
                 task.lastExitCode = exitCode;
                 task.lastError = QString("Worker exit code %1.").arg(exitCode);
+                eon::core::MetricsCollector::instance().incCounter("orchestrator.tasks.failed");
+                eon::core::MetricsCollector::instance().incGauge("orchestrator.tasks.running", -1);
                 if (shouldRetry(task)) {
                     task.status = TaskStatus::Pending;
                     task.nextRunAtMs =
@@ -779,6 +1052,7 @@ int main(int argc, char* argv[]) {
             emitTelemetry("orchestration.task.finished", {
                 {"taskId", task.taskId},
                 {"slotId", running.slotId},
+                {"cellId", (running.slotId - 1) % qMax(1, cellCount)},
                 {"workflowId", task.workflowId},
                 {"workflowFilePath", task.workflowPath},
                 {"priority", task.priority},
@@ -848,3 +1122,6 @@ int main(int argc, char* argv[]) {
     qInfo() << "Orchestration completed.";
     return 0;
 }
+
+
+

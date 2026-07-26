@@ -1,0 +1,76 @@
+进度已记录并标为已完成。下面是我对 OpenTAP vs EonTest 的精炼结论、补充遗漏项，以及按优先级清晰排列的改进计划（含关键技术细节、验收标准与估时）。
+
+概览结论
+
+总体对比: OpenTAP 的强项在于资源生命周期管理、并行/分布式 Runner、插件能力与成熟的 Verdict/测试模型；EonTest 的强项是 Excel 驱动的工作流表达、快速上手的 SCPI 插件和 Studio 集成界面。二者互补，EonTest 应优先补齐资源生命周期、并发隔离与结构化可观测性。
+目标: 以最小侵入（保持 Excel 驱动、Studio UX）为前提，分阶段引入 OpenTAP 的成熟实践（Resource 生命周期、PrePlanRun/PostPlanRun、Runner/Agent、Verdict 扩展、结构化日志、驱动共享）。
+关键差异（要点）
+
+资源生命周期: OpenTAP 自动注册/租赁/引用计数；EonTest 目前插件显式 open/close + 简单连接池（需统一管理）。
+执行模型: OpenTAP 支持 Plan 级钩子（PrePlanRun/PostPlanRun）与嵌套步骤；EonTest 主要线性/并发组，缺 plan 级预分配与子步骤作用域。
+并行/分布式: OpenTAP 有 Runner/Agent 分布式生态；EonTest 尚未做跨机 Agent。
+资源隔离/冲突: OpenTAP 强调独占/共享租赁与冲突检测；EonTest 需要 ResourceManager 做排队/独占/共享语义。
+日志/可观测性: OpenTAP 社区常用结构化事件（JSON lines）；EonTest 已有 scpi.trace 原型，需要统一 schema、per-cell 分离与聚合器。
+插件声明: OpenTAP 插件带 capability/manifest；EonTest 需增加插件能力描述与兼容性检测。
+Verdict/分析器: OpenTAP 有明确 Verdict 模型；EonTest 需把 analyzer 结果映射到扩展的 Verdict（Pass/Fail/Inconclusive/Aborted/Error）。
+硬件拓扑与矩阵: OpenTAP 社区常有矩阵抽象；EonTest 需要 MatrixManager 做路由事务。
+UI/运维: OpenTAP 更注重 Runner 管理与远程监控；EonTest 可增强 Studio 的多-CELL 仪表板和冲突提示。
+文档中遗漏 / 已补充的重要项
+
+Lease 心跳/保活: Lease 应支持 keepalive（agent 崩溃时能回收）。
+死锁与优先级反转保护: 增加等待队列策略、检测/报警与可选超时回退。
+资源抢占/预emption 策略: 在紧急场景可配置强制回收或降级。
+插件版本与兼容性检查: manifest 包含版本、依赖与兼容性策略。
+命令重试与退避策略: 为 I/O 操作定义幂等与指数退避/retry 上限。
+运行环境快照与可复现: 捕捉 package/driver/firmware 版本以保证结果可复现。
+外部系统集成点: LIMS/MES、CI、时序遥测（Prometheus）集成策略。
+非-SCPI 驱动抽象: 保持 IScpiIO 扩展性或新增通用 ITransport 抽象。
+清晰改进计划（按优先级 P0–P3）
+
+P0 — 必做（目标：稳定并行/资源正确性） — 1–2 人周
+
+ResourceManager 原型: 增加 SDK/include/eon/sdk/ResourceManager.h 与 Runtime/src/ResourceManager.cpp，实现 per-entry mutex、等待队列、Acquire(resourceId, mode, timeout) 返回 RAII Lease。
+验收: 并发 Acquire/Release 压力测试（≥100k 次）无内存/连接泄露；独占 vs 共享语义通过单元测试。
+连接池→租赁: 修改 ScpiStep 类调用改为通过 ResourceManager::Acquire 获取 IScpiIO；在 IScpiIO 内部加 ioMutex 序列化单会话。
+验收: 4 个并发 CELL 争用同一设备时只有一个持有 exclusive lease，其他等待或按策略失败。
+统一 IScpiIO::query() 行为: 写入 terminator、稳健 read-loop（waitForReadyRead / select / viRead）、可选 SYST:ERR? 回读、超时统一化与错误映射。
+验收: 在已测硬件上 *IDN?、MEAS:VOLT? 重复调用无截断，超时与错误被正确记录。
+scpi.trace JSON Lines 与聚合器原型: 每 cell 写 reports/cell-<id>/scpi.trace.jsonl，实现 Python 聚合器生成 summary 与合并流。
+验收: 聚合器能按时间序合并多 cell 日志并输出摘要。
+per-cell Worker 原型（进程模式）: 进程隔离、心跳+watchdog，日志分离到 reports/cell-<id>/。
+验收: 单个 agent 崩溃不影响其它 agent，engine 能检测并重试。
+P1 — 中期（功能完善、可视化、矩阵） — 2–4 人周
+
+MatrixManager 与路由事务: 支持路由租约与批量事务回滚。
+Verdict 扩展与 Analyzer 映射: 实现 Pass/Fail/Inconclusive/Aborted/Error，支持 step/plan 可配置映射策略。
+插件 manifest + capability discovery + 版本检查。
+Studio：多 CELL 看板、资源冲突告警、批量控制。
+日志/遥测集成: Prometheus metrics + 日志级别/轮转策略。
+P2 — 扩展（分布式、兼容） — 4–8 人周
+
+分布式 Runner/Agent: 支持跨机调度、容器化部署、作业队列与优先级调度。
+共享驱动仓库与导出器/兼容层: 开发 OpenTAP 导出器（Excel→OpenTAP 脚本/配置），评估兼容层（将 OpenTAP 插件映射到 EonTest 运行时）。
+规模化性能与长期遥测: 集群监控、聚合器扩展到大并发场景。
+验收标准（关键）
+
+并发 Acquire/Release 压测错误率 <0.01%。
+4-CELL 争用场景中资源独占语义正确（单 owner）。
+scpi.trace 聚合正确、每个 cell 输出独立文件并能生成 summary。
+每个 PR 带单元/集成测试，CI 在 Windows runner 可复现。
+遗漏补足（短清单）
+
+实现 Lease keepalive + agent 死亡回收机制。
+增加死锁检测报警与可配置 preemption 策略。
+在 manifest 中加入 plugin 版本与兼容矩阵。
+定义 instrument retry/backoff 策略与幂等要求。
+捕捉运行环境快照（driver/firmware/commit id）以保证可重放性。
+下一步建议
+
+建议按 P0 顺序推进：先实现 ResourceManager 原型 → 迁移 ScpiStep 到租赁调用 → IScpiIO 统一 query 行为 → scpi.trace 聚合器 → per-cell agent 原型。每个子任务提交小 PR，CI 通过后合并。
+我可以现在开始实现第一个任务：在工作区新增 SDK/include/eon/sdk/ResourceManager.h 和 Runtime/src/ResourceManager.cpp 的最小可工作原型，并运行构建与单元测试；是否现在开始？（回复“开始”我就着手写代码并运行构建/测试）
+参考文档（已生成）
+
+EonTest_System_Architecture_Detailed_Report.md — 详尽设计与示例代码。
+EonTest_System_Architecture_Report.md — 精要摘要与路线。
+OpenTAP_vs_EonTest_Comparison.md — 原始对比稿。
+我已把本次“合并复核并整理”任务记录到 TODO 并标为完成。需要我现在开始实现 P0 的 ResourceManager 原型吗？

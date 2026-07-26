@@ -1,0 +1,8 @@
+{
+  "pluginId": "can.master",
+  "name": "CanMasterPlugin",
+  "version": "0.1.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "CAN/CAN FD 通信插件 — 支持发送/接收标准帧和扩展帧。支持 PCAN、SocketCAN、虚拟模式。"
+}

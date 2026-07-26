@@ -1,0 +1,8 @@
+{
+  "pluginId": "measure.voltage",
+  "name": "MultimeterPlugin",
+  "version": "0.1.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "Digital multimeter measurement via SCPI serial/USB. Supports DC voltage, DC current, resistance with multi-sample averaging."
+}

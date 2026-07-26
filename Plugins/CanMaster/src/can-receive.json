@@ -1,0 +1,8 @@
+{
+  "pluginId": "can.receive",
+  "name": "CanReceivePlugin",
+  "version": "0.1.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "CAN 帧接收 — 支持 ID 过滤和数据匹配。支持 PCAN、SocketCAN、虚拟模式。"
+}

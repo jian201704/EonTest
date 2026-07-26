@@ -1,5 +1,6 @@
 add_library(sample-reporter-plugin MODULE
     src/SampleReporterPlugin.cpp
+    src/samplereporter.json
 )
 
 target_link_libraries(sample-reporter-plugin

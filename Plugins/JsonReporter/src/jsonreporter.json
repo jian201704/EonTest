@@ -1,0 +1,8 @@
+{
+    "pluginId": "eon.reporter.json",
+    "name": "JsonReporterPlugin",
+    "version": "0.1.0",
+    "contractType": "reporter",
+    "contractVersion": "1.0",
+    "description": "JSON reporter plugin for workflow results."
+}

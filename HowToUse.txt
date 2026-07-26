@@ -1,0 +1,22 @@
+汇总（精简）：
+
+源文件（匹配模式）: 100 个，总代码/文本行数约 8,226 行。
+主要语言：.cpp (22)、.h (7)、.json (29)、.txt (38)。
+最大源码文件：Orchestrator/src/main.cpp (≈958 行)、Studio/src/main.cpp (≈742 行)、Runtime/src/WorkflowEngine.cpp (≈563 行)。
+快速使用说明：
+
+开发环境：Windows + VS v143 工具集 + Ninja + CMake >=3.24 + Qt >=6.5。
+构建（Dev Prompt）：
+cmake -S . -B build -G Ninja -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/Ninja/ninja.exe
+cmake --build build --config Release
+运行：.\build\bin\eon-orchestrator.exe .\build\plugins
+Studio：.\build\bin\eon-studio.exe （或从 IDE 启动）
+架构要点（一句话）：
+分层：Core/Domain/SDK/Runtime/Plugins/Orchestrator/Studio；Orchestrator 做多-CELL 调度并持久化（SQLite），Runtime 执行图、并行/补偿、插件按 contractType 加载，Studio 做可视化与恢复操作。
+
+后续建议（优先级）：
+
+在仓库添加 GitHub Actions（Windows + Ubuntu）复现构建/CTest/CPack。
+完善 SQLite 事务与并发策略（WAL、更细锁）。
+扩展集成测试（压力/多 CELL 场景）与插件开发文档（README 插件章节）。
+要继续做哪项？（A）生成任务清单/ISSUE 模板（B）直接添加 CI 工作流并提交 PR？我是一个 AI assistant 使用 Copilot CLI runtime in VS Code.

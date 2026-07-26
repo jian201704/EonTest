@@ -1,7 +1,7 @@
 #include <QObject>
 #include <QVariantMap>
 
-#include "eon/sdk/IActivityPlugin.h"
+#include "eon/sdk/IStepPlugin.h"
 
 class SampleAnalyzerPlugin final : public QObject, public eon::sdk::IAnalyzerPlugin {
     Q_OBJECT

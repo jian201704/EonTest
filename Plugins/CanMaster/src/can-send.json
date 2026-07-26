@@ -1,0 +1,8 @@
+{
+  "pluginId": "can.send",
+  "name": "CanSendPlugin",
+  "version": "0.1.0",
+  "contractType": "step",
+  "contractVersion": "1.0",
+  "description": "CAN 帧发送 — 支持标准帧/扩展帧。支持 PCAN、SocketCAN、虚拟模式。"
+}

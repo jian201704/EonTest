@@ -6,6 +6,7 @@ target_link_libraries(eon-runtime-worker
     PRIVATE
         eon-application
         eon-core
+        eon-infrastructure
         Qt6::Core
 )
 

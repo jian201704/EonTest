@@ -1,6 +1,6 @@
 #include <QObject>
 
-#include "eon/sdk/IActivityPlugin.h"
+#include "eon/sdk/IStepPlugin.h"
 
 class SampleReporterPlugin final : public QObject, public eon::sdk::IReporterPlugin {
     Q_OBJECT
