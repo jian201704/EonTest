@@ -287,8 +287,13 @@ bool parseWorkflowDefinitionXlsx(
     }
 
     int decodeConfigColumn = -1;
+    int pluginIdColumn = -1;
     for (int col = 1; col <= doc.dimension().lastColumn(); ++col) {
         const QString header = cellStr(doc, headerRow, col).toLower();
+        if (header == "pluginid" || header == "plugin id" ||
+            header.contains("插件id") || header.contains("插件标识")) {
+            pluginIdColumn = col;
+        }
         if (header.contains("解码配置") || header.contains("decodeconfig") ||
             header.contains("decode profile") || header.contains("decodeprofile")) {
             decodeConfigColumn = col;
@@ -312,6 +317,8 @@ bool parseWorkflowDefinitionXlsx(
         int timeout      = cellInt(doc, row, 13);
         QString failPol  = cellStr(doc, row, 14);
         QString remark   = cellStr(doc, row, 15);
+        const QString explicitPluginId = pluginIdColumn > 0
+            ? cellStr(doc, row, pluginIdColumn) : QString();
         const QString decodeConfig = decodeConfigColumn > 0
             ? cellStr(doc, row, decodeConfigColumn) : QString();
 
@@ -320,7 +327,10 @@ bool parseWorkflowDefinitionXlsx(
         eon::domain::ActivityStep step;
         step.stepId = QString("step.%1").arg(
             stepNo.isEmpty() ? QString::number(row - dataStart + 1) : stepNo);
-        step.pluginId = inferPluginId(devType, action);
+        // Prefer an explicit plugin ID. Device type remains a human-facing
+        // classification and protocol remains a transport/configuration concern.
+        step.pluginId = explicitPluginId.isEmpty()
+            ? inferPluginId(devType, action) : explicitPluginId;
 
         int maxRet = 0; QString failAct;
         parseFailurePolicyText(failPol, &maxRet, &failAct);
@@ -493,7 +503,7 @@ bool writeWorkflowDefinitionXlsx(
     QStringList headers = {
         "工步号", "设备分类", "设备名称", "通道/端口号", "测试项名称",
         "动作指令", "配置参数1", "配置参数2", "配置参数3",
-        "下限值", "上限值", "单位", "超时(ms)", "失败处理", "备注"
+        "下限值", "上限值", "单位", "超时(ms)", "失败处理", "备注", "Plugin ID"
     };
     for (int c = 0; c < headers.size(); ++c)
         xlsx.write(1, c + 1, QVariant(headers[c]), headerFmt);
@@ -521,6 +531,7 @@ bool writeWorkflowDefinitionXlsx(
             s.policy.failurePolicy == FailurePolicy::ContinueOnError ? "继续" : "停机");
         xlsx.write(row, 15, s.onSuccessStepId.isEmpty()
             ? QString() : ("-> " + s.onSuccessStepId));                          // O 备注
+        xlsx.write(row, 16, s.pluginId);                                          // P Plugin ID
     }
 
     // --- Sheet2: 设备资源映射 (15 列标准格式) ---

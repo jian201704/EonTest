@@ -9,27 +9,27 @@ OUTPUT = ROOT / "Workflows" / "real-device-acceptance.xlsx"
 headers = [
     "工步号", "设备分类", "设备名称", "通道/端口号", "测试项名称", "动作指令",
     "配置参数1", "配置参数2", "配置参数3", "下限值", "上限值", "单位",
-    "超时(ms)", "失败处理", "备注", "解码配置"
+    "超时(ms)", "失败处理", "备注", "解码配置", "Plugin ID"
 ]
 
 steps = [
     [1, "PowerSupply", "DC_Power_Supply", "COM3", "RS232 SCPI DC Power Supply ON", "power_on",
          "port=COM3,baudRate=9600,dataBits=8,stopBits=1,parity=N,voltage=12.0,current=1.0,powerOnDelayMs=1000",
-         "", "", "", "", "", 5000, "retry 1", "替换 COM 口、电压、电流和上电稳定时间", ""],
+     "", "", "", "", "", 5000, "retry 1", "替换 COM 口、电压、电流和上电稳定时间", "", "power.supply"],
     [2, "DoIP", "DoIP_ECU", "TCP:13400", "DiagnosticSessionControl 10 01", "send_uds",
      "host=192.168.0.100,port=13400,sourceAddress=0x102D,targetAddress=0x1008,activationType=0x00,udsPayload=10 01,expectedPrefix=50 01,connectionMode=session",
-    "", "", "", "", "hex", 5000, "retry 1", "替换 ECU IP、逻辑地址和 UDS 期望响应", ""],
+     "", "", "", "", "hex", 5000, "retry 1", "替换 ECU IP、逻辑地址和 UDS 期望响应", "", "doip.master"],
     [3, "Modbus", "Modbus_PLC", "TCP:502", "Read Holding Register 0", "read",
      "transport=tcp,host=192.168.0.101,port=502,slaveId=1,functionCode=3,startAddr=0,quantity=1,valueType=uint16,valueOffset=0,valueLength=2",
     "", "", 0, 65535, "counts", 5000, "retry 1", "替换寄存器地址、从站号和工程限值",
-     json.dumps([{"name": "register_value", "offset": 0, "length": 2, "type": "uint16", "endian": "big", "unit": "counts"}], ensure_ascii=False)],
-        [4, "SCPI", "SCPI_DMM", "TCP:5025", "Instrument Identification", "*IDN?",
-         "scpi.idn", ".+", "5000", "", "", "text", 5000, "fail_fast", "确认仪器返回非空身份信息", ""],
-    [5, "SCPI", "SCPI_DMM", "TCP:5025", "DC Voltage", "MEAS:VOLT:DC?",
+     json.dumps([{"name": "register_value", "offset": 0, "length": 2, "type": "uint16", "endian": "big", "unit": "counts"}], ensure_ascii=False), "modbus.master"],
+        [4, "Multimeter", "SCPI_DMM", "TCP:5025", "Instrument Identification", "*IDN?",
+         "scpi.idn", ".+", "5000", "", "", "text", 5000, "fail_fast", "确认仪器返回非空身份信息", "", "scpi.command"],
+    [5, "Multimeter", "SCPI_DMM", "TCP:5025", "DC Voltage", "MEAS:VOLT:DC?",
     "scpi.voltage", "[-+0-9.eE]+", "5000", 0, 1000, "V", 5000, "fail_fast", "将上下限改为 DUT 规格；默认范围仅用于连通性验证",
-     json.dumps([{"name": "scpi_value", "type": "double", "unit": "V", "trim": True}], ensure_ascii=False)],
+     json.dumps([{"name": "scpi_value", "type": "double", "unit": "V", "trim": True}], ensure_ascii=False), "scpi.command"],
         [6, "PowerSupply", "DC_Power_Supply", "COM3", "RS232 SCPI DC Power Supply OFF", "power_off",
-         "port=COM3,baudRate=9600,dataBits=8,stopBits=1,parity=N", "", "", "", "", "", 5000, "continue", "确认测试完成后关闭输出", ""],
+         "port=COM3,baudRate=9600,dataBits=8,stopBits=1,parity=N", "", "", "", "", "", 5000, "continue", "确认测试完成后关闭输出", "", "power.supply"],
 ]
 
 thin = Side(style="thin", color="9AA7B8")
@@ -51,10 +51,10 @@ for row, values in enumerate(steps, 2):
         cell = ws.cell(row, col, value if value != "" else None)
         cell.alignment = Alignment(vertical="top", wrap_text=True)
         cell.border = border
-for col, width in enumerate([8, 12, 18, 14, 28, 22, 72, 20, 12, 12, 12, 10, 10, 12, 42, 72], 1):
+for col, width in enumerate([8, 12, 18, 14, 28, 22, 72, 20, 12, 12, 12, 10, 10, 12, 42, 72, 20], 1):
     ws.column_dimensions[chr(64 + col) if col <= 26 else "A"].width = width
 ws.freeze_panes = "A2"
-ws.auto_filter.ref = f"A1:P{len(steps) + 1}"
+ws.auto_filter.ref = f"A1:Q{len(steps) + 1}"
 
 mapping = wb.create_sheet("设备通道映射表")
 mapping_headers = ["设备编号", "设备分类", "设备名称", "通道号", "连接方式", "主地址", "子端口", "从地址", "设备型号", "校准有效期", "数据位", "停止位", "校验位", "启用", "备注"]
