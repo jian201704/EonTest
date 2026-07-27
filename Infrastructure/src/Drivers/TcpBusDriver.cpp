@@ -258,4 +258,3 @@ bool TcpBusDriver::receiveUdp(QByteArray& data, QString& sourceHost, quint16& so
 
 } // namespace eon::infra
 
-#include "TcpBusDriver.moc"

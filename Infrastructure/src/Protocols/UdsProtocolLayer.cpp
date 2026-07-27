@@ -410,4 +410,3 @@ bool UdsProtocolLayer::decodeSingleFrame(const QByteArray& frame, QByteArray& da
 
 } // namespace eon::infra
 
-#include "UdsProtocolLayer.moc"

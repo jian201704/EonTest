@@ -285,4 +285,3 @@ QVariantMap SocketCanDriver::errorCounters() const {
 
 } // namespace eon::infra
 
-#include "SocketCanDriver.moc"

@@ -673,4 +673,3 @@ bool DoipProtocolLayer::receiveTcpFrame(QByteArray& data, int timeoutMs,
 
 } // namespace eon::infra
 
-#include "DoipProtocolLayer.moc"

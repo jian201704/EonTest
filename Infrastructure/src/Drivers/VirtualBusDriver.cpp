@@ -211,4 +211,3 @@ void VirtualBusDriver::setFrameDelayUs(qint64 delayUs) {
 
 } // namespace eon::infra
 
-#include "VirtualBusDriver.moc"
