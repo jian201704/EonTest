@@ -1,0 +1,24 @@
+{
+  "workflowId": "Virtual_CAN_Regression",
+  "entryStepId": "step.can",
+  "initialData": { "virtualMode": true },
+  "steps": [
+    {
+      "stepId": "step.can",
+      "pluginId": "can.receive",
+      "timeoutMs": 3000,
+      "initialData": {
+        "virtualMode": true,
+        "canId": 256,
+        "valueType": "uint16",
+        "valueOffset": 2,
+        "valueLength": 2,
+        "endian": "big",
+        "formula": "x / 10",
+        "unit": "V",
+        "lowerLimit": 20,
+        "upperLimit": 30
+      }
+    }
+  ]
+}

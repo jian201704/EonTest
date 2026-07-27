@@ -1,0 +1,25 @@
+{
+  "workflowId": "Virtual_Modbus_Regression",
+  "entryStepId": "step.modbus",
+  "initialData": { "virtualMode": true },
+  "steps": [
+    {
+      "stepId": "step.modbus",
+      "pluginId": "modbus.master",
+      "timeoutMs": 3000,
+      "initialData": {
+        "virtualMode": true,
+        "action": "read",
+        "functionCode": 3,
+        "simValue": 1234,
+        "unit": "counts",
+        "valueType": "uint16",
+        "valueOffset": 0,
+        "valueLength": 2,
+        "formula": "x / 2",
+        "lowerLimit": 600,
+        "upperLimit": 650
+      }
+    }
+  ]
+}

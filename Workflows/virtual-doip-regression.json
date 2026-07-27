@@ -1,0 +1,19 @@
+{
+  "workflowId": "Virtual_DoIP_Regression",
+  "entryStepId": "step.doip",
+  "initialData": { "virtualMode": true },
+  "steps": [
+    {
+      "stepId": "step.doip",
+      "pluginId": "doip.master",
+      "timeoutMs": 3000,
+      "initialData": {
+        "virtualMode": true,
+        "action": "send_uds",
+        "udsPayload": "10 01",
+        "simResponse": "50 01",
+        "expectedPrefix": "50 01"
+      }
+    }
+  ]
+}

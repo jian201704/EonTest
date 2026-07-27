@@ -109,6 +109,16 @@ if(BUILD_TESTING)
     )
 
     add_test(
+        NAME virtual_protocol_regression
+        COMMAND
+            $<TARGET_FILE:eon-orchestrator>
+            ${EON_PLUGIN_OUTPUT_DIR}
+            ${CMAKE_SOURCE_DIR}/Workflows/virtual-doip-regression.json
+            ${CMAKE_SOURCE_DIR}/Workflows/virtual-modbus-regression.json
+            ${CMAKE_SOURCE_DIR}/Workflows/virtual-can-regression.json
+    )
+
+    add_test(
         NAME orchestrator_resume_smoke_seed
         COMMAND
             $<TARGET_FILE:eon-orchestrator>

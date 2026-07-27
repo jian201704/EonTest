@@ -46,6 +46,23 @@ bool decodeCanPayload(const QByteArray& payload, const QVariantMap& data,
     }
     return true;
 }
+
+void applyLimits(QVariantMap& data) {
+    if (!data.contains("measuredValue") ||
+        (!data.contains("lowerLimit") && !data.contains("upperLimit"))) return;
+    const double value = data.value("measuredValue").toDouble();
+    const bool hasLower = data.contains("lowerLimit");
+    const bool hasUpper = data.contains("upperLimit");
+    const double lower = data.value("lowerLimit").toDouble();
+    const double upper = data.value("upperLimit").toDouble();
+    const bool passed = (!hasLower || value >= lower) && (!hasUpper || value <= upper);
+    data["resultText"] = passed ? "PASS" : "FAIL";
+    data["analyze.passed"] = passed;
+    data["analyze.value"] = value;
+    if (hasLower) data["analyze.min"] = lower;
+    if (hasUpper) data["analyze.max"] = upper;
+    data["analyze.unit"] = data.value("measuredUnit");
+}
 }
 
 class CanReceivePlugin final : public QObject, public eon::sdk::IStepPlugin {
@@ -79,6 +96,7 @@ public:
                          QString("0x%1").arg(static_cast<uint8_t>(frame.data[1]), 2, 16, QChar('0')));
             }
             if (!decodeCanPayload(frame.data, d, d, errorMessage)) return false;
+            applyLimits(d);
             return true;
         }
 

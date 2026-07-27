@@ -57,6 +57,23 @@ bool decodeModbusValues(const QVariantList& values, const QVariantMap& data,
     return true;
 }
 
+void applyLimits(QVariantMap& data) {
+    if (!data.contains("measuredValue") ||
+        (!data.contains("lowerLimit") && !data.contains("upperLimit"))) return;
+    const double value = data.value("measuredValue").toDouble();
+    const bool hasLower = data.contains("lowerLimit");
+    const bool hasUpper = data.contains("upperLimit");
+    const double lower = data.value("lowerLimit").toDouble();
+    const double upper = data.value("upperLimit").toDouble();
+    const bool passed = (!hasLower || value >= lower) && (!hasUpper || value <= upper);
+    data["resultText"] = passed ? "PASS" : "FAIL";
+    data["analyze.passed"] = passed;
+    data["analyze.value"] = value;
+    if (hasLower) data["analyze.min"] = lower;
+    if (hasUpper) data["analyze.max"] = upper;
+    data["analyze.unit"] = data.value("measuredUnit");
+}
+
 } // namespace
 
 class ModbusMasterPlugin final : public QObject, public eon::sdk::IStepPlugin {
@@ -90,23 +107,7 @@ public:
                 errorMessage = decodeError;
                 return false;
             }
-            // 限值对比
-            const bool hasLo = d.contains("lowerLimit");
-            const bool hasHi = d.contains("upperLimit");
-            if (hasLo || hasHi) {
-                const double lo = d.value("lowerLimit").toDouble();
-                const double hi = d.value("upperLimit").toDouble();
-                const bool pass = (!hasLo || simValue >= lo) && (!hasHi || simValue <= hi);
-                d.insert("resultText", pass ? "PASS" : "FAIL");
-                d.insert("analyze.passed", pass);
-                d.insert("analyze.value", simValue);
-                if (hasLo) d.insert("analyze.min", lo);
-                if (hasHi) d.insert("analyze.max", hi);
-                d.insert("analyze.unit", d.value("measuredUnit"));
-                d.insert("analyze.message", pass
-                    ? QString("PASS: %1 within [%2, %3]").arg(simValue).arg(lo).arg(hi)
-                    : QString("FAIL: %1 outside [%2, %3]").arg(simValue).arg(lo).arg(hi));
-            }
+            applyLimits(d);
             return true;
         }
 
@@ -165,6 +166,7 @@ public:
         d.insert("modbus.functionCode", funcCode);
 
         if (!decodeModbusValues(values, d, d, errorMessage)) return false;
+        applyLimits(d);
 
         if (!values.isEmpty()) {
             const double val = values.first().toDouble();
