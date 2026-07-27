@@ -542,6 +542,9 @@ bool WorkflowEngine::executeWorkflowWithParams(const eon::domain::WorkflowDefini
         }
         eventBus_->publish("workflow.failed", failurePayload);
         runCompensation();
+        // Failure path must release engine-owned leases before notifying
+        // plugins, matching the normal PostPlanRun cleanup contract.
+        releaseAllResources();
         for (auto it = pluginManager_.stepPlugins().cbegin();
              it != pluginManager_.stepPlugins().cend(); ++it) {
             if (it.value() != nullptr) it.value()->postWorkflow(context);

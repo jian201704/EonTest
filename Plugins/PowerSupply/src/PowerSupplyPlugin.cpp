@@ -4,12 +4,24 @@
 #include <QVariantMap>
 #include <QThread>
 #include <memory>
+#include <map>
+#include <mutex>
+#include <set>
 
 #include "eon/sdk/IScpiIO.h"
 #include "eon/infra/SerialScpiIO.h"
 #include "eon/sdk/IStepPlugin.h"
 
 namespace {
+
+struct PowerConnection {
+    std::unique_ptr<eon::infra::SerialScpiIO> io;
+    std::mutex mutex;
+    std::set<QString> workflows;
+};
+
+std::map<QString, std::unique_ptr<PowerConnection>> s_connections;
+std::mutex s_connectionsMutex;
 
 inline QString readPort(const QVariantMap& d, const QString& fallback) {
     return d.value("port", d.value("powerPort", fallback)).toString();
@@ -33,6 +45,15 @@ inline int readDelay(const QVariantMap& d, int fallback) {
     return d.value("delay", d.value("powerOnDelayMs", fallback)).toInt();
 }
 
+QString connectionKey(const QVariantMap& data) {
+    return QString("serial:%1:%2:%3:%4:%5")
+        .arg(readPort(data, "COM3"))
+        .arg(readBaud(data, 9600))
+        .arg(data.value("dataBits", 8).toInt())
+        .arg(data.value("parity", "N").toString().toUpper())
+        .arg(data.value("stopBits", 1).toInt());
+}
+
 } // namespace
 
 class PowerSupplyPlugin final : public QObject, public eon::sdk::IStepPlugin {
@@ -42,6 +63,23 @@ class PowerSupplyPlugin final : public QObject, public eon::sdk::IStepPlugin {
 
 public:
     QString id() const override { return "power.supply"; }
+
+    void postWorkflow(eon::sdk::WorkflowContext& context) override {
+        const QString workflowKey = QString("%1/%2").arg(
+            context.workflowId, context.data.value("_cellId", "default").toString());
+        std::lock_guard lock(s_connectionsMutex);
+        for (auto it = s_connections.begin(); it != s_connections.end();) {
+            auto& connection = it->second;
+            connection->workflows.erase(workflowKey);
+            if (connection->workflows.empty()) {
+                std::lock_guard ioLock(connection->mutex);
+                if (connection->io) connection->io->close();
+                it = s_connections.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
 
     bool executeStep(eon::sdk::WorkflowContext& context, QString& errorMessage) override {
         auto& d = context.data;
@@ -66,9 +104,24 @@ public:
             if (delay > 0) QThread::msleep(delay); return true;
         }
 
-        // IScpiIO 抽象层（串口实现）
-        auto io = std::make_unique<eon::infra::SerialScpiIO>();
-        io->setDefaultBaudRate(baud);
+        // Workflow-scoped connection pool: reuse the serial session across
+        // power_on, measurement and power_off steps, then close it in postWorkflow.
+        const QString key = connectionKey(d);
+        PowerConnection* connection = nullptr;
+        {
+            std::lock_guard lock(s_connectionsMutex);
+            auto& slot = s_connections[key];
+            if (!slot) slot = std::make_unique<PowerConnection>();
+            connection = slot.get();
+            connection->workflows.insert(QString("%1/%2").arg(
+                context.workflowId, d.value("_cellId", "default").toString()));
+            if (!connection->io) {
+                connection->io = std::make_unique<eon::infra::SerialScpiIO>();
+                connection->io->setDefaultBaudRate(baud);
+            }
+        }
+        std::unique_lock ioLock(connection->mutex);
+        auto* io = connection->io.get();
         QVariantMap ioCfg;
         ioCfg["port"] = port; ioCfg["baudRate"] = baud;
         ioCfg["dataBits"] = d.value("dataBits", 8);
@@ -76,7 +129,10 @@ public:
         ioCfg["stopBits"] = d.value("stopBits", 1);
 
         tr(QString("OPEN %1 @ %2").arg(port).arg(baud));
-        if (!io->open(ioCfg)) { er(QString("Cannot open %1").arg(port)); return false; }
+        if (!io->isConnected() && !io->open(ioCfg)) {
+            er(QString("Cannot open %1").arg(port));
+            return false;
+        }
 
         auto sc = [&](const QString& cmd, int t = 200) {
             tr(">> " + cmd);

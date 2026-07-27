@@ -2,6 +2,7 @@
 #include <QByteArray>
 #include <QString>
 #include <cstdint>
+#include <mutex>
 
 // Modbus 工具函数
 inline uint16_t toU16(uint8_t hi, uint8_t lo) {
@@ -20,11 +21,16 @@ class TcpModbusTransport;
 enum class ModbusTransportType { Unknown, SerialRTU, TCP };
 
 struct ModbusHandle {
+    ModbusHandle() = default;
+    ModbusHandle(const ModbusHandle&) = delete;
+    ModbusHandle& operator=(const ModbusHandle&) = delete;
+
     ModbusTransportType type = ModbusTransportType::Unknown;
     SerialModbusTransport* serial = nullptr;
     TcpModbusTransport* tcp = nullptr;
     uint8_t slaveId = 1;
     uint8_t unitId = 1;
+    std::mutex ioMutex;
 
     bool openSerial(const QString& port, int baud, int dataBits, const QString& parity, int stopBits);
     bool openTCP(const QString& host, int port);

@@ -6,12 +6,38 @@
 #include <QJsonObject>
 #include <QThread>
 #include <cmath>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <set>
 
 #include "eon/sdk/IStepPlugin.h"
 #include "eon/infra/ResponseDecoder.h"
 #include "Transports.h"
 
 namespace {
+
+struct ModbusConnection {
+    std::unique_ptr<ModbusHandle> handle;
+    std::set<QString> workflows;
+};
+
+std::map<QString, std::unique_ptr<ModbusConnection>> s_connections;
+std::mutex s_connectionsMutex;
+
+QString connectionKey(const QVariantMap& data, const QString& transport) {
+    if (transport == "tcp" || transport == "ethernet" || transport == "network") {
+        return QString("tcp:%1:%2").arg(
+            data.value("host", data.value("ip", "192.168.1.100")).toString(),
+            QString::number(data.value("port", data.value("tcpPort", 502)).toInt()));
+    }
+    return QString("serial:%1:%2:%3:%4:%5")
+        .arg(data.value("port", data.value("comPort", "COM3")).toString())
+        .arg(data.value("baudRate", data.value("baud", 9600)).toInt())
+        .arg(data.value("dataBits", 8).toInt())
+        .arg(data.value("parity", "none").toString().toLower())
+        .arg(data.value("stopBits", 1).toInt());
+}
 
 QVariantList loadDecodeProfile(const QVariant& value) {
     const QString path = value.toString().trimmed();
@@ -84,6 +110,21 @@ class ModbusMasterPlugin final : public QObject, public eon::sdk::IStepPlugin {
 public:
     QString id() const override { return "modbus.master"; }
 
+    void postWorkflow(eon::sdk::WorkflowContext& context) override {
+        const QString workflowKey = QString("%1/%2").arg(
+            context.workflowId, context.data.value("_cellId", "default").toString());
+        std::lock_guard lock(s_connectionsMutex);
+        for (auto it = s_connections.begin(); it != s_connections.end();) {
+            it->second->workflows.erase(workflowKey);
+            if (it->second->workflows.empty()) {
+                if (it->second->handle) it->second->handle->close();
+                it = s_connections.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
     bool executeStep(eon::sdk::WorkflowContext& context, QString& errorMessage) override {
         auto& d = context.data;
         const bool virt = d.value("virtualMode", false).toBool();
@@ -111,18 +152,30 @@ public:
             return true;
         }
 
-        // 打开传输层
-        ModbusHandle handle;
-        handle.slaveId = slaveId;
-        handle.unitId = slaveId;
-
         const QString transport = d.value("transport", d.value("connType", "serial")).toString().toLower();
         const int timeoutMs = d.value("timeoutMs", d.value("timeout", 3000)).toInt();
+
+        const QString key = connectionKey(d, transport);
+        const QString workflowKey = QString("%1/%2").arg(
+            context.workflowId, d.value("_cellId", "default").toString());
+        ModbusConnection* connection = nullptr;
+        {
+            std::lock_guard lock(s_connectionsMutex);
+            auto& slot = s_connections[key];
+            if (!slot) slot = std::make_unique<ModbusConnection>();
+            if (!slot->handle) slot->handle = std::make_unique<ModbusHandle>();
+            slot->workflows.insert(workflowKey);
+            connection = slot.get();
+        }
+        std::unique_lock ioLock(connection->handle->ioMutex);
+        auto& handle = *connection->handle;
+        handle.slaveId = slaveId;
+        handle.unitId = slaveId;
 
         if (transport == "tcp" || transport == "ethernet" || transport == "network") {
             const QString host = d.value("host", d.value("ip", "192.168.1.100")).toString();
             const int port = d.value("port", d.value("tcpPort", 502)).toInt();
-            if (!handle.openTCP(host, port)) {
+            if (!handle.tcp && !handle.openTCP(host, port)) {
                 errorMessage = QString("Cannot connect to Modbus TCP %1:%2").arg(host).arg(port);
                 return false;
             }
@@ -133,7 +186,7 @@ public:
             const int dataBits = d.value("dataBits", 8).toInt();
             const QString parity = d.value("parity", "none").toString();
             const int stopBits = d.value("stopBits", 1).toInt();
-            if (!handle.openSerial(portName, baud, dataBits, parity, stopBits)) {
+            if (!handle.serial && !handle.openSerial(portName, baud, dataBits, parity, stopBits)) {
                 errorMessage = QString("Cannot open Modbus RTU %1 @ %2").arg(portName).arg(baud);
                 return false;
             }
@@ -155,8 +208,6 @@ public:
             errorMessage = QString("Unsupported Modbus function code: %1").arg(funcCode);
             ok = false;
         }
-
-        handle.close();
 
         if (!ok) return false;
 
