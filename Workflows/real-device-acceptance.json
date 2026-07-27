@@ -45,8 +45,7 @@
         "activationType": "0x00",
         "udsPayload": "10 01",
         "expectedPrefix": "50 01",
-        "testItem": "DoIP DiagnosticSessionControl 10 01",
-        "resultText": "PASS_EXPECTED"
+        "testItem": "DoIP DiagnosticSessionControl 10 01"
       }
     },
     {
