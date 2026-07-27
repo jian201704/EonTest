@@ -176,6 +176,9 @@ private:
     struct ResourceEntry {
         IResource* resource = nullptr;
         IScpiIO* scpiIO = nullptr;
+        // Used by registerIoResource. Other registered resources remain
+        // caller-owned to preserve the public registration contract.
+        std::unique_ptr<IResource> ownedResource;
         ResourceState state = ResourceState::Closed;
         int sharedCount = 0;
         bool hasExclusiveOwner = false;

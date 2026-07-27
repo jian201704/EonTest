@@ -209,7 +209,10 @@ public:
             ok = false;
         }
 
-        if (!ok) return false;
+        if (!ok) {
+            handle.close();
+            return false;
+        }
 
         // 限值对比：如果配置了下限/上限，自动判定 PASS/FAIL
         d.insert("modbus.values", QVariant::fromValue(values));

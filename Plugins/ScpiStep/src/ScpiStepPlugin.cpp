@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 
 #include "eon/sdk/IScpiIO.h"
 #include "eon/sdk/IStepPlugin.h"
@@ -27,8 +28,17 @@ namespace {
 
 enum class IoType { Serial, Tcp, Visa, Unknown };
 
-// --- 线程安全连接池（回退方案：当 ResourceManager 不可用时使用） ---
-static std::map<QString, std::unique_ptr<eon::sdk::IScpiIO>> s_connectionPool;
+struct ScpiConnection {
+    std::unique_ptr<eon::sdk::IScpiIO> io;
+    std::mutex ioMutex;
+    std::set<QString> workflows;
+    eon::sdk::ResourceManager* resourceManager = nullptr;
+    QString registeredResourceId;
+};
+
+// Connection pool shared by steps in one worker process. Each connection is
+// serialized and is released when its final workflow reference is removed.
+static std::map<QString, std::unique_ptr<ScpiConnection>> s_connectionPool;
 static std::mutex s_poolMutex;
 
 static QVariantList loadDecodeProfile(const QVariant& value) {
@@ -76,12 +86,15 @@ static QString connectionKey(const QVariantMap& cfg) {
     return QString("serial:%1:%2").arg(cfg.value("port", "COM1").toString()).arg(cfg.value("baudRate", "9600").toString());
 }
 
-static eon::sdk::IScpiIO* getOrCreateIo(const QVariantMap& cfg) {
+static ScpiConnection* getOrCreateConnection(const QVariantMap& cfg,
+                                             const QString& workflowKey) {
     QString key = connectionKey(cfg);
     std::lock_guard<std::mutex> lock(s_poolMutex);
     auto it = s_connectionPool.find(key);
-    if (it != s_connectionPool.end() && it->second && it->second->isConnected())
+    if (it != s_connectionPool.end() && it->second) {
+        it->second->workflows.insert(workflowKey);
         return it->second.get();
+    }
 
     // 创建新连接
     QString ct = cfg.value("connectType", "").toString().toLower();
@@ -97,8 +110,11 @@ static eon::sdk::IScpiIO* getOrCreateIo(const QVariantMap& cfg) {
     }
 
     if (!io->open(cfg)) return nullptr;
-    auto* ptr = io.get();
-    s_connectionPool[key] = std::move(io);
+    auto connection = std::make_unique<ScpiConnection>();
+    connection->io = std::move(io);
+    connection->workflows.insert(workflowKey);
+    auto* ptr = connection.get();
+    s_connectionPool[key] = std::move(connection);
     return ptr;
 }
 
@@ -112,6 +128,26 @@ class ScpiStepPlugin final : public QObject, public eon::sdk::IStepPlugin {
 public:
     QString id() const override { return "scpi.command"; }
 
+    void postWorkflow(eon::sdk::WorkflowContext& context) override {
+        const QString workflowKey = QString("%1/%2").arg(
+            context.workflowId, context.data.value("_cellId", "default").toString());
+        std::lock_guard lock(s_poolMutex);
+        for (auto it = s_connectionPool.begin(); it != s_connectionPool.end();) {
+            auto& connection = it->second;
+            connection->workflows.erase(workflowKey);
+            if (!connection->workflows.empty()) {
+                ++it;
+                continue;
+            }
+            std::lock_guard ioLock(connection->ioMutex);
+            if (connection->resourceManager)
+                connection->resourceManager->unregisterResource(
+                    connection->registeredResourceId.toStdString());
+            if (connection->io) connection->io->close();
+            it = s_connectionPool.erase(it);
+        }
+    }
+
     bool executeStep(eon::sdk::WorkflowContext& context, QString& errorMessage) override {
         auto& d = context.data;
         QString stepId = d.value("_currentStepId", "unknown").toString();
@@ -124,11 +160,19 @@ public:
         auto tr = [&](const QString& s) { trace.append(s); d.insert("scpi.trace", trace.join(" | ")); };
         auto er = [&](const QString& m) { errorMessage = trace.join(" | ") + " | " + m; };
 
-        // 1. 获取 I/O 连接——优先通过 ResourceManager，回退到静态连接池
+        // 1. Get a workflow-scoped connection. The pooled connection keeps
+        // transport lifetime separate from each individual SCPI command.
         eon::sdk::IScpiIO* io = nullptr;
         std::unique_ptr<eon::sdk::Lease> lease;
         QString resourceId = d.value("resourceId", d.value("resource", "")).toString();
         if (resourceId.isEmpty()) resourceId = connectionKey(d);
+        const QString workflowKey = QString("%1/%2").arg(
+            context.workflowId, d.value("_cellId", "default").toString());
+        auto* connection = getOrCreateConnection(d, workflowKey);
+        if (!connection || !connection->io) {
+            er(QString("Cannot open connection for port=%1").arg(d.value("port", "?").toString()));
+            return false;
+        }
 
         if (context.resourceManager) {
             std::string rid = resourceId.toStdString();
@@ -139,10 +183,9 @@ public:
                     tr(QString("RM lease [%1]").arg(resourceId));
                 }
             } else {
-                // 未注册——尝试注册 IO 资源
-                auto* poolIo = getOrCreateIo(d);
-                if (poolIo) {
-                    context.resourceManager->registerIoResource(rid, poolIo);
+                if (context.resourceManager->registerIoResource(rid, connection->io.get())) {
+                    connection->resourceManager = context.resourceManager;
+                    connection->registeredResourceId = resourceId;
                     lease = context.resourceManager->acquire(rid, eon::sdk::LeaseMode::Exclusive);
                     if (lease && lease->scpiIO()) {
                         io = lease->scpiIO();
@@ -153,13 +196,10 @@ public:
         }
 
         if (!io) {
-            io = getOrCreateIo(d);
-            if (!io) {
-                er(QString("Cannot open connection for port=%1").arg(d.value("port", "?").toString()));
-                return false;
-            }
+            io = connection->io.get();
             tr(QString("IO %1").arg(io->configInfo()));
         }
+        std::unique_lock ioLock(connection->ioMutex);
 
         // 2. 设备清除
         io->deviceClear();

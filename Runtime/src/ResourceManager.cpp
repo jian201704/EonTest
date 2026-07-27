@@ -186,14 +186,12 @@ bool ResourceManager::registerIoResource(const std::string& resourceId, IScpiIO*
         return false;
     }
 
-    // 创建 IoResourceProxy 包装 IScpiIO 为 IResource
-    auto proxy = std::make_unique<IoResourceProxy>(QString::fromStdString(resourceId), io);
-
     auto entry = std::make_unique<ResourceEntry>();
-    entry->resource = proxy.get();
+    entry->ownedResource = std::make_unique<IoResourceProxy>(
+        QString::fromStdString(resourceId), io);
+    entry->resource = entry->ownedResource.get();
     entry->scpiIO = io;
-    entry->state = ResourceState::Open; // 假设已连接
-    // 注意：proxy 的生命周期需要管理好 — 暂时由调用方保证 io 的生存期
+    entry->state = ResourceState::Closed;
     resources_[resourceId] = std::move(entry);
     return true;
 }
@@ -433,6 +431,11 @@ std::string ResourceManager::resourceState(const std::string& resourceId) const
 
 void ResourceManager::releaseLease(int leaseId)
 {
+    {
+        std::lock_guard lk(heartbeatMutex_);
+        heartbeats_.erase(leaseId);
+    }
+
     // 通过 leaseMap 精确定位 resourceId
     std::string resourceId;
     {
