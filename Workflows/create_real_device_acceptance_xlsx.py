@@ -13,18 +13,23 @@ headers = [
 ]
 
 steps = [
-    [1, "DoIP", "DoIP_ECU", "TCP:13400", "DiagnosticSessionControl 10 01", "send_uds",
+    [1, "电源", "DC_Power_Supply", "COM3", "RS232 SCPI DC Power Supply ON", "power_on",
+     "port=COM3,baudRate=9600,dataBits=8,stopBits=1,parity=N,voltage=12.0,current=1.0,powerOnDelayMs=1000",
+     "", "", "", "", "", 5000, "重试1次", "替换 COM 口、电压、电流和上电稳定时间", ""],
+    [2, "DoIP", "DoIP_ECU", "TCP:13400", "DiagnosticSessionControl 10 01", "send_uds",
      "host=192.168.0.100,port=13400,sourceAddress=0x102D,targetAddress=0x1008,activationType=0x00,udsPayload=10 01,expectedPrefix=50 01,connectionMode=session",
      "", "", "", "", "hex", 5000, "重试1次", "替换 ECU IP、逻辑地址和 UDS 期望响应", ""],
-    [2, "Modbus", "Modbus_PLC", "TCP:502", "Read Holding Register 0", "read",
+    [3, "Modbus", "Modbus_PLC", "TCP:502", "Read Holding Register 0", "read",
      "transport=tcp,host=192.168.0.101,port=502,slaveId=1,functionCode=3,startAddr=0,quantity=1,valueType=uint16,valueOffset=0,valueLength=2",
      "", "", 0, 65535, "counts", 5000, "重试1次", "替换寄存器地址、从站号和工程限值",
      json.dumps([{"name": "register_value", "offset": 0, "length": 2, "type": "uint16", "endian": "big", "unit": "counts"}], ensure_ascii=False)],
-    [3, "SCPI", "SCPI_DMM", "TCP:5025", "Instrument Identification", "*IDN?",
+    [4, "SCPI", "SCPI_DMM", "TCP:5025", "Instrument Identification", "*IDN?",
      "scpi.idn", ".+", "5000", "", "", "text", 5000, "停机", "确认仪器返回非空身份信息", ""],
-    [4, "SCPI", "SCPI_DMM", "TCP:5025", "DC Voltage", "MEAS:VOLT:DC?",
+    [5, "SCPI", "SCPI_DMM", "TCP:5025", "DC Voltage", "MEAS:VOLT:DC?",
      "scpi.voltage", "[-+0-9.eE]+", "5000", 0, 1000, "V", 5000, "停机", "将上下限改为 DUT 规格；默认范围仅用于连通性验证",
      json.dumps([{"name": "scpi_value", "type": "double", "unit": "V", "trim": True}], ensure_ascii=False)],
+    [6, "电源", "DC_Power_Supply", "COM3", "RS232 SCPI DC Power Supply OFF", "power_off",
+     "port=COM3,baudRate=9600,dataBits=8,stopBits=1,parity=N", "", "", "", "", "", 5000, "继续", "确认测试完成后关闭输出", ""],
 ]
 
 thin = Side(style="thin", color="9AA7B8")
@@ -60,9 +65,10 @@ for col, value in enumerate(mapping_headers, 1):
     cell.alignment = Alignment(horizontal="center", wrap_text=True)
     cell.border = border
 mapping_rows = [
-    [1, "DoIP", "DoIP_ECU", "TCP:13400", "TCP", "192.168.0.100", 13400, "0x1008", "DUT DoIP Gateway", "TODO", "", "", "", "是", "修改为实际 ECU 地址"],
-    [2, "Modbus", "Modbus_PLC", "TCP:502", "TCP", "192.168.0.101", 502, 1, "PLC/Device", "TODO", "", "", "", "是", "修改为实际从站和寄存器映射"],
-    [3, "SCPI", "SCPI_DMM", "TCP:5025", "TCP", "192.168.0.102", 5025, "", "DMM", "TODO", "", "", "", "是", "确认仪器已开启远程控制"],
+    [1, "电源", "DC_Power_Supply", "COM3", "串口", "COM3", "", "", "SCPI DC Power Supply", "TODO", 8, 1, "N", "是", "确认 RS232 电源串口和 SCPI 终止符"],
+    [2, "DoIP", "DoIP_ECU", "TCP:13400", "TCP", "192.168.0.100", 13400, "0x1008", "DUT DoIP Gateway", "TODO", "", "", "", "是", "修改为实际 ECU 地址"],
+    [3, "Modbus", "Modbus_PLC", "TCP:502", "TCP", "192.168.0.101", 502, 1, "PLC/Device", "TODO", "", "", "", "是", "修改为实际从站和寄存器映射"],
+    [4, "SCPI", "SCPI_DMM", "TCP:5025", "TCP", "192.168.0.102", 5025, "", "DMM", "TODO", "", "", "", "是", "确认仪器已开启远程控制"],
 ]
 for row, values in enumerate(mapping_rows, 2):
     for col, value in enumerate(values, 1):
@@ -87,7 +93,7 @@ trace_rows = [
     ["操作人员", "TODO", "执行前填写"],
     ["测试日期", "TODO", "执行前填写 YYYY-MM-DD"],
     ["设备配置文件", "Workflows/HardwareConfigs/real-device-acceptance.example.json", "对应 JSON 配置"],
-    ["执行前确认", "已替换所有 TODO、IP、地址和上下限", "未确认不得连接真实设备"],
+    ["执行前确认", "已替换所有 TODO、COM 口、IP、地址和上下限", "未确认不得连接真实设备"],
 ]
 for row in trace_rows:
     trace.append(row)

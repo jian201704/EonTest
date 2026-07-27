@@ -24,7 +24,10 @@ inline double readCurrent(const QVariantMap& d, double fallback) {
     return d.value("current", d.value("powerCurrent", fallback)).toDouble();
 }
 inline QString readAction(const QVariantMap& d, const QString& fallback) {
-    return d.value("action", d.value("powerAction", fallback)).toString().trimmed().toLower();
+    QString action = d.value("action", d.value("powerAction", fallback)).toString().trimmed().toLower();
+    if (action == "power_on" || action == "output_on") return "on";
+    if (action == "power_off" || action == "output_off") return "off";
+    return action;
 }
 inline int readDelay(const QVariantMap& d, int fallback) {
     return d.value("delay", d.value("powerOnDelayMs", fallback)).toInt();

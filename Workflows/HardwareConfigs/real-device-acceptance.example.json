@@ -2,6 +2,18 @@
   "description": "EonTest real-device acceptance hardware template. Replace addresses and limits before execution.",
   "updated": "2026-07-27",
   "devices": {
+    "DC_Power_Supply": {
+      "protocol": "SCPI over RS232",
+      "connectType": "serial",
+      "port": "COM3",
+      "baudRate": 9600,
+      "dataBits": 8,
+      "stopBits": 1,
+      "parity": "N",
+      "voltage": 12.0,
+      "current": 1.0,
+      "powerOnDelayMs": 1000
+    },
     "DoIP_ECU": {
       "protocol": "DoIP",
       "connectType": "tcp",
@@ -26,6 +38,8 @@
     }
   },
   "before_run_checklist": [
+    "RS232 SCPI DC power supply is connected and its COM port is confirmed",
+    "Power supply voltage/current setpoints and output safety limits are confirmed",
     "DUT power and network isolation confirmed",
     "ECU diagnostic address and DoIP routing activation permitted",
     "Modbus register map and slave ID confirmed",

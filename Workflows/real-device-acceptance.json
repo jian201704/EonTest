@@ -1,7 +1,7 @@
 {
   "workflowId": "Real_Device_Acceptance",
   "description": "Real-device acceptance template for DoIP, Modbus TCP and SCPI. Replace example addresses and limits before execution.",
-  "entryStepId": "step.doip.routing",
+  "entryStepId": "step.power.on",
   "initialData": {
     "virtualMode": false,
     "operator": "TODO",
@@ -9,6 +9,26 @@
     "hardwareConfig": "Workflows/HardwareConfigs/real-device-acceptance.example.json"
   },
   "steps": [
+    {
+      "stepId": "step.power.on",
+      "pluginId": "power.supply",
+      "timeoutMs": 5000,
+      "maxRetries": 1,
+      "onSuccessStepId": "step.doip.routing",
+      "initialData": {
+        "virtualMode": false,
+        "port": "COM3",
+        "baudRate": 9600,
+        "dataBits": 8,
+        "parity": "N",
+        "stopBits": 1,
+        "action": "power_on",
+        "voltage": 12.0,
+        "current": 1.0,
+        "powerOnDelayMs": 1000,
+        "testItem": "RS232 SCPI DC Power Supply ON"
+      }
+    },
     {
       "stepId": "step.doip.routing",
       "pluginId": "doip.master",
@@ -78,7 +98,7 @@
       "pluginId": "scpi.command",
       "timeoutMs": 5000,
       "maxRetries": 1,
-      "onSuccessStepId": "",
+      "onSuccessStepId": "step.power.off",
       "initialData": {
         "virtualMode": false,
         "connectType": "tcp",
@@ -93,6 +113,23 @@
         "upperLimit": 1000,
         "unit": "V",
         "testItem": "SCPI DC Voltage"
+      }
+    },
+    {
+      "stepId": "step.power.off",
+      "pluginId": "power.supply",
+      "timeoutMs": 5000,
+      "maxRetries": 0,
+      "onSuccessStepId": "",
+      "initialData": {
+        "virtualMode": false,
+        "port": "COM3",
+        "baudRate": 9600,
+        "dataBits": 8,
+        "parity": "N",
+        "stopBits": 1,
+        "action": "power_off",
+        "testItem": "RS232 SCPI DC Power Supply OFF"
       }
     }
   ]
