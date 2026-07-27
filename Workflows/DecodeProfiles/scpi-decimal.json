@@ -1,0 +1,8 @@
+[
+  {
+    "name": "scpi_value",
+    "type": "double",
+    "unit": "V",
+    "trim": true
+  }
+]

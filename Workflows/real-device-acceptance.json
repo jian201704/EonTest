@@ -1,0 +1,99 @@
+{
+  "workflowId": "Real_Device_Acceptance",
+  "description": "Real-device acceptance template for DoIP, Modbus TCP and SCPI. Replace example addresses and limits before execution.",
+  "entryStepId": "step.doip.routing",
+  "initialData": {
+    "virtualMode": false,
+    "operator": "TODO",
+    "productSerialNumber": "TODO",
+    "hardwareConfig": "Workflows/HardwareConfigs/real-device-acceptance.example.json"
+  },
+  "steps": [
+    {
+      "stepId": "step.doip.routing",
+      "pluginId": "doip.master",
+      "timeoutMs": 5000,
+      "maxRetries": 1,
+      "onSuccessStepId": "step.modbus.read",
+      "initialData": {
+        "virtualMode": false,
+        "host": "192.168.0.100",
+        "port": 13400,
+        "connectionMode": "session",
+        "sourceAddress": "0x102D",
+        "targetAddress": "0x1008",
+        "activationType": "0x00",
+        "udsPayload": "10 01",
+        "expectedPrefix": "50 01",
+        "testItem": "DoIP DiagnosticSessionControl 10 01",
+        "resultText": "PASS_EXPECTED"
+      }
+    },
+    {
+      "stepId": "step.modbus.read",
+      "pluginId": "modbus.master",
+      "timeoutMs": 5000,
+      "maxRetries": 1,
+      "onSuccessStepId": "step.scpi.identification",
+      "initialData": {
+        "virtualMode": false,
+        "transport": "tcp",
+        "host": "192.168.0.101",
+        "port": 502,
+        "slaveId": 1,
+        "action": "read",
+        "functionCode": 3,
+        "startAddr": 0,
+        "quantity": 1,
+        "valueType": "uint16",
+        "valueOffset": 0,
+        "valueLength": 2,
+        "unit": "counts",
+        "lowerLimit": 0,
+        "upperLimit": 65535,
+        "decodeProfile": "Workflows/DecodeProfiles/modbus-register-u16.json",
+        "testItem": "Modbus Holding Register 0"
+      }
+    },
+    {
+      "stepId": "step.scpi.identification",
+      "pluginId": "scpi.command",
+      "timeoutMs": 5000,
+      "maxRetries": 1,
+      "onSuccessStepId": "step.scpi.voltage",
+      "initialData": {
+        "virtualMode": false,
+        "connectType": "tcp",
+        "host": "192.168.0.102",
+        "tcpPort": 5025,
+        "command": "*IDN?",
+        "query": true,
+        "expect": ".+",
+        "saveAs": "scpi.idn",
+        "testItem": "SCPI Identification"
+      }
+    },
+    {
+      "stepId": "step.scpi.voltage",
+      "pluginId": "scpi.command",
+      "timeoutMs": 5000,
+      "maxRetries": 1,
+      "onSuccessStepId": "",
+      "initialData": {
+        "virtualMode": false,
+        "connectType": "tcp",
+        "host": "192.168.0.102",
+        "tcpPort": 5025,
+        "command": "MEAS:VOLT:DC?",
+        "query": true,
+        "expect": "[-+0-9.eE]+",
+        "saveAs": "scpi.voltage",
+        "decodeProfile": "Workflows/DecodeProfiles/scpi-decimal.json",
+        "lowerLimit": 0,
+        "upperLimit": 1000,
+        "unit": "V",
+        "testItem": "SCPI DC Voltage"
+      }
+    }
+  ]
+}

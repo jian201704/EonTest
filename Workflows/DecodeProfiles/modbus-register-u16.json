@@ -1,0 +1,10 @@
+[
+  {
+    "name": "register_value",
+    "offset": 0,
+    "length": 2,
+    "type": "uint16",
+    "endian": "big",
+    "unit": "counts"
+  }
+]

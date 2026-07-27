@@ -1,0 +1,36 @@
+{
+  "description": "EonTest real-device acceptance hardware template. Replace addresses and limits before execution.",
+  "updated": "2026-07-27",
+  "devices": {
+    "DoIP_ECU": {
+      "protocol": "DoIP",
+      "connectType": "tcp",
+      "host": "192.168.0.100",
+      "port": 13400,
+      "sourceAddress": "0x102D",
+      "targetAddress": "0x1008"
+    },
+    "Modbus_PLC": {
+      "protocol": "Modbus TCP",
+      "transport": "tcp",
+      "host": "192.168.0.101",
+      "port": 502,
+      "slaveId": 1
+    },
+    "SCPI_DMM": {
+      "protocol": "SCPI",
+      "connectType": "tcp",
+      "host": "192.168.0.102",
+      "port": 5025,
+      "terminator": "\\n"
+    }
+  },
+  "before_run_checklist": [
+    "DUT power and network isolation confirmed",
+    "ECU diagnostic address and DoIP routing activation permitted",
+    "Modbus register map and slave ID confirmed",
+    "SCPI instrument remote control enabled",
+    "Calibration certificates are valid",
+    "Replace example IP addresses, UDS payloads, register addresses and limits"
+  ]
+}
